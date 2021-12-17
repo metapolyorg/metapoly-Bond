@@ -185,6 +185,8 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         return payout;
 
     }
+
+    ///@notice Used by treasury to trigger a price update
     function requestPriceUpdate() external {
         require(msg.sender == address(treasury), "Only treasury");
         Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
@@ -206,19 +208,22 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         priceInETH = _price;
     }
 
+    ///@return _priceInETH floor price of collection is ETH (18 decimals)
+    ///@return _priceInUSD floor price of collection is USD (18 decimals)
     function getPrice() public view returns (uint _priceInETH, uint _priceInUSD) {
         _priceInETH = priceInETH;
         _priceInUSD = priceInETH * uint(IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestAnswer()) / (1e8);
     }
 
+    ///@notice Function to set the price markdown percentage. 
     function setMarkdownValue(uint _perc) external {
         require(msg.sender == address(treasury), "Only treasury");
         priceMarkdownPerc = _perc;
     }
 
-    function fulfill(bytes32 _requestId, uint256 _volume) external recordChainlinkFulfillment(_requestId)
+    ///@dev Used by oracle to update the floor price
+    function fulfill(bytes32 _requestId, uint256 _priceInETH) external recordChainlinkFulfillment(_requestId)
     {
-        priceTimestamp = block.timestamp;
         priceInETH = _priceInETH.mul(priceMarkdownPerc).div(10000);
     }
     /**
