@@ -49,8 +49,12 @@ module.exports = {
       url: process.env.RPC_LOCAL,
       saveDeployments: true
     },
+    kovan: {
+      url: process.env.RPC_KOVAN,
+      accounts: [`0x${process.env.PRIVATE_KEY}`]
+    },
 
-    mainnet : {
+    mainnet: {
       url: process.env.RPC_MAINNET,
       // accounts: [`0x${process.env.PRIVATE_KEY}`]      
     }

@@ -6,9 +6,10 @@ import "../../libs/contracts-upgradeable/proxy/Initializable.sol";
 import "../../libs/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
 import "../../libs/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 import "../../libs/FixedPoint.sol";
-import "../../libs/contracts-upgradeable/token/ERC721/IERC721ReceiverUpgradeable.sol";
-import "../../libs/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
-import "@chainlink/contracts/src/v0.7/ChainlinkClient.sol";
+
+interface IPrinciple is IERC20Upgradeable {
+    function decimals() external view returns(uint);
+}
 
 interface IStaking {
     function stake(uint _amount, address _receiver) external returns (bool) ;
@@ -16,32 +17,28 @@ interface IStaking {
 
 interface ITreasury {
     function deposit(uint amount, address principle, uint profit) external ;
-    function depositNFT(uint _tokenId, address _token, uint _payout, uint _value) external returns (uint);
     function valueOf( address _token, uint _amount ) external view returns ( uint value_ );
-    function cestaPrice() external view returns (uint);
+    function d33dPrice() external view returns (uint);
 }
 
-interface IChainlink {
-    function latestAnswer() external view returns (int256);
+interface IBondCalculator {
+    function valuation( address _LP, uint _amount ) external view returns ( uint );
+    function markdown( address _LP ) external view returns ( uint );
 }
 
-contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
-    using Chainlink for Chainlink.Request;
+contract BondContract is Initializable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
+    using SafeERC20Upgradeable for IPrinciple;
     using FixedPoint for *;
 
     IERC20Upgradeable public D33D;
-    IERC721Upgradeable public principle;
+    IPrinciple public principle;
     address public treasury;
     address public BondCalculator;
     address public Staking;
     address public DAO;
     address public admin;
-
-    address private oracle;
-    uint private oracleFee;
-    bytes32 private jobId;
 
     bool public isLiquidityBond;
 
@@ -52,9 +49,6 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
 
     uint public totalDebt; 
     uint public lastDecay; 
-
-    uint priceInETH; 
-    uint priceMarkdownPerc; //2 decimals // 5000 for 50%
 
     struct Terms {
         uint controlVariable; // scaling variable for price
@@ -71,7 +65,6 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         uint vesting; // Blocks left to vest
         uint lastTimestamp; // Last interaction
         uint pricePaid; // In USd, for front end viewing
-        uint id;
     }
 
     // Info for incremental adjustments to control variable 
@@ -85,7 +78,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
 
     enum PARAMETER { VESTING, PAYOUT, FEE, DEBT }
 
-    event BondCreated( uint tokenId, uint indexed payout, uint indexed expires, uint indexed priceInUSD );
+    event BondCreated( uint deposit, uint indexed payout, uint indexed expires, uint indexed priceInUSD );
     event BondRedeemed( address indexed recipient, uint payout, uint remaining );
     event BondPriceChanged( uint indexed priceInUSD, uint indexed internalPrice, uint indexed debtRatio );
     event ControlVariableAdjustment( uint initialBCV, uint newBCV, uint adjustment, bool addition );
@@ -95,9 +88,9 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         _;
     }
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
-        address _staking, address _DAO, address _admin, address _oracle, bytes32 _jobId, uint _oracleFee) external initializer {
+        address _staking, address _DAO, address _admin) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
-        principle  = IERC721Upgradeable(_principle);
+        principle  = IPrinciple(_principle);
         treasury = _treasury;
         BondCalculator = _bondCalculator;
         Staking = _staking;
@@ -105,12 +98,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         admin = _admin;
 
         isLiquidityBond = _bondCalculator != address(0);
-        principle.setApprovalForAll(_treasury, true);
-
-        setPublicChainlinkToken();
-        oracle = _oracle;
-        jobId = _jobId;
-        oracleFee = _oracleFee ;
+        principle.safeApprove(_treasury, type(uint).max);
 
     }
 
@@ -133,6 +121,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
             maxDebt: _maxDebt
         });
         totalDebt = _initialDebt;
+        // lastDecay = block.number; //changed
         lastDecay = block.timestamp; 
 
     }
@@ -140,94 +129,61 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
     /**
         @notice Function to deposit principleToken. Principle token is deposited to treasury
         and D33D is minted. The minted D33D is vested for a specific time.
-        @param _tokenId tokenId of principle token to deposit
+        @param _amount quantity of principle token to deposit
         @param _maxPrice Used for slippage handling. Price in terms of principle token.
-        @param _depositer address of User to receive bond D33D
+        @param _depositer address of User to receive bond d33d
      */
-
-    function deposit(uint _tokenId, uint _maxPrice, address _depositer) external returns (uint) {
+    function deposit(uint _amount, uint _maxPrice, address _depositer) external returns (uint){
+        require(_amount > 0, "Invalid amount");
         require(_depositer != address(0), "Invalid address");
 
         decayDebt();
         require( totalDebt <= terms.maxDebt, "Max capacity reached" );
+        
+        uint priceInUSD = bondPriceInUSD(); // Stored in bond info
+        uint nativePrice = _bondPrice();
+        require( _maxPrice >= nativePrice, "Slippage limit: more than max price" ); // slippage protection
 
-        (, uint priceInUSD) =  getPrice(); //uint value
+        uint value = ITreasury( treasury ).valueOf(address(principle), _amount);
+        uint payout = payoutFor(value);
 
-        uint payout = payoutFor(priceInUSD);
-
-        //payout increases when no new deposits
         require( payout >= 1e16, "Bond too small" ); // must be > 0.01 D33D ( underflow protection )
-        uint fee = payout.mul(terms.fee).div(10000);
-
-        principle.safeTransferFrom(msg.sender, address(this), _tokenId);
-
-        ITreasury( treasury ).depositNFT( _tokenId, address(principle), payout.add(fee), priceInUSD); 
-
-        if(fee > 0) {
-            D33D.safeTransfer(DAO, fee);
+        
+        if(D33D.totalSupply() > 0) {
+            require( payout <= maxPayout(), "Bond too large"); // size protection because there is no slippage 
+        }
+        // profits are calculated
+        uint fee = payout .mul(terms.fee).div(10000);
+        uint profit;
+        {
+            uint d33dInUSD = ITreasury(treasury).d33dPrice();
+            uint payoutInUSD = payout.mul(d33dInUSD).div(1e18); //18 decimals
+            uint feeInUSD = fee.mul(d33dInUSD).div(1e18);
+            profit = value.sub(payoutInUSD).sub(feeInUSD);
         }
 
+        principle.safeTransferFrom(msg.sender, address(this), _amount);
+        ITreasury( treasury ).deposit( _amount, address(principle), profit ); 
+        
         // total debt is increased
-        totalDebt = totalDebt.add( payout ); 
+        totalDebt = totalDebt.add( value ); 
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ),
+            payout: bondInfo[ _depositer ].payout.add( payout ).add(fee),
             vesting: terms.vestingTerm,
             lastTimestamp: block.timestamp,
-            pricePaid: priceInUSD,
-            id: _tokenId
+            pricePaid: priceInUSD
         });
 
         // indexed events are emitted
-        emit BondCreated( _tokenId, payout, block.number.add( terms.vestingTerm ), priceInUSD );
+        emit BondCreated( _amount, payout, block.number.add( terms.vestingTerm ), priceInUSD );
         emit BondPriceChanged( bondPriceInUSD(), _bondPrice(), debtRatio() );
 
         adjust(); // control variable is adjusted
         return payout;
-
     }
 
-    ///@notice Used by treasury to trigger a price update
-    function requestPriceUpdate() external {
-        require(msg.sender == address(treasury), "Only treasury");
-        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
-
-        request.add("get", "https://api.opensea.io/api/v1/collection/sandbox/stats");
-        request.add("path", "stats.floor_price");
-        request.addInt("times", int(10**18));
-        sendChainlinkRequestTo(oracle, request, oracleFee);
-    }
-
-    function setOracleParams(address _oracle, bytes32 _jobId, uint _oracleFee) external onlyAdmin {
-        oracle = _oracle;
-        jobId = _jobId;
-        oracleFee = _oracleFee ;
-    }
-
-    function setPrice(uint _price) external {
-        require(msg.sender == address(treasury), "Only treasury");
-        priceInETH = _price;
-    }
-
-    ///@return _priceInETH floor price of collection is ETH (18 decimals)
-    ///@return _priceInUSD floor price of collection is USD (18 decimals)
-    function getPrice() public view returns (uint _priceInETH, uint _priceInUSD) {
-        _priceInETH = priceInETH;
-        _priceInUSD = priceInETH * uint(IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestAnswer()) / (1e8);
-    }
-
-    ///@notice Function to set the price markdown percentage. 
-    function setMarkdownValue(uint _perc) external {
-        require(msg.sender == address(treasury), "Only treasury");
-        priceMarkdownPerc = _perc;
-    }
-
-    ///@dev Used by oracle to update the floor price
-    function fulfill(bytes32 _requestId, uint256 _priceInETH) external recordChainlinkFulfillment(_requestId)
-    {
-        priceInETH = _priceInETH.mul(priceMarkdownPerc).div(10000);
-    }
     /**
         @notice Function to redeem/stake the vested D33D.
         @param _recipient Address to redeem
@@ -250,8 +206,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
                 payout: info.payout.sub( payout ),
                 vesting: info.vesting - (block.timestamp - info.lastTimestamp),
                 lastTimestamp: block.timestamp,
-                pricePaid: info.pricePaid,
-                id: info.id
+                pricePaid: info.pricePaid
             });
 
             emit BondRedeemed( _recipient, payout, bondInfo[ _recipient ].payout );            
@@ -357,9 +312,13 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
 
     }
 
-    ///@return price_ price in usd (18 decimals)
+    ///@return price_ price in usd (in principle decimals)
     function bondPriceInUSD() public view returns ( uint price_ ) {
-        return bondPrice();
+        if( isLiquidityBond ) {
+            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).markdown( address(principle) ) ).div(1e18);
+        } else {
+            price_ = bondPrice() .mul( 10 ** principle.decimals() ) .div(1e18);
+        }
     }
 
     ///@return price_ price interms of principle token (18 decimals)
@@ -373,7 +332,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
     }
 
     function _bondPrice() internal returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 )/* .add(1e17) */;
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
@@ -420,14 +379,5 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
 
     function maxPayout() public view returns ( uint ) {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
-    }
-
-    function onERC721Received(
-        address operator,
-        address from,
-        uint256 tokenId,
-        bytes calldata data
-    ) external override pure returns (bytes4) {
-        return IERC721ReceiverUpgradeable.onERC721Received.selector;
     }
 }

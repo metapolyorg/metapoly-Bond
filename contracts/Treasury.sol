@@ -22,7 +22,6 @@ interface IToken is IERC20Upgradeable {
     function decimals() external view returns(uint8);
 }
 
-
 interface INFTBond {
     function requestPriceUpdate() external;
     function setPrice(uint _price) external;
@@ -76,7 +75,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
     uint public totalReserves; // Risk-free value of all assets
 
-    uint public D33DPrice; //should not be used as oracle
+    uint public d33dPrice; //should not be used as oracle
 
     enum MANAGING { RESERVEDEPOSITOR, RESERVESPENDER, RESERVETOKEN, RESERVEMANAGER, LIQUIDITYDEPOSITOR, 
         LIQUIDITYTOKEN, LIQUIDITYMANAGER, REWARDMANAGER, NFTDEPOSITOR, SUPPORTEDNFT }
@@ -90,22 +89,22 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
     event ReservesUpdated( uint indexed totalReserves );
     event ReservesAudited( uint indexed totalReserves );
 
-    function initialize(address _D33D,         
-        address _DAI,
-        address owner_, uint D33DPrice_) external initializer {
+    function initialize(address _d33d,         
+        address _USDC,
+        address owner_, uint d33dPrice_) external initializer {
         __Ownable_init();
 
-        D33DPrice = D33DPrice_;
-        D33D = ID33D(_D33D);
+        d33dPrice = d33dPrice_;
+        D33D = ID33D(_d33d);
 
-        isReserveToken[ _DAI ] = true;
-        reserveTokens.push( _DAI );
+        isReserveToken[ _USDC ] = true;
+        reserveTokens.push( _USDC );
 
         transferOwnership(owner_);
     }
 
-    function updateD33DPrice(uint D33DPrice_) external onlyOwner{
-        D33DPrice = D33DPrice_;
+    function updateD33dPrice(uint d33dPrice_) external onlyOwner{
+        d33dPrice = d33dPrice_;
     }
 
     function depositNFT(uint _tokenId, address _token, uint _payout, uint _value) external returns (uint) {
@@ -170,7 +169,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
                 valueOf( reserveTokens[ i ], IERC20Upgradeable( reserveTokens[ i ] ).balanceOf( address(this) ) )
             );
         }
-        
+
         for( uint i = 0; i < liquidityTokens.length; i++ ) {
             reserves = reserves + lpValuation(IERC20Upgradeable( liquidityTokens[ i ] ).balanceOf( address(this) ), liquidityTokens[ i ]);
         }
@@ -198,7 +197,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         uint value = valueOf( _token, _amount );
 
         // mint OHM needed and store amount of rewards for distribution
-        send_ = (value -  _profit) * 1e18 / D33DPrice;
+        send_ = (value -  _profit) * 1e18 / d33dPrice;
         D33D.mint( msg.sender, send_ );
 
         //value - send_ is protocol profit
@@ -252,16 +251,11 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
 
     function valueOf( address _token, uint _amount ) public view returns ( uint value_ ) {
-        if ( isReserveToken[ _token ] ) {
-            // convert amount to match D33D decimals
-            value_ = _amount * ( 10 ** D33D.decimals() ) / ( 10 ** IToken( _token ).decimals() );
-        } else if ( isLiquidityToken[ _token ] ) {
-            value_ = IBondCalculator( bondCalculator[ _token ] ).valuation( _token, _amount );
-        }
+        value_ = _amount * ( 10 ** D33D.decimals() ) / ( 10 ** IToken( _token ).decimals() );
     }
 
     function excessReserves() public view returns ( uint ) {
-        return totalReserves - (D33D.totalSupply() * D33DPrice / 1e18);
+        return totalReserves - (D33D.totalSupply() * d33dPrice / 1e18);
     }
 
     function editPermission(MANAGING _managing, address _address, bool _status) external onlyOwner returns (bool) {
@@ -400,6 +394,5 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
     ) external pure override returns (bytes4) {
         return IERC721ReceiverUpgradeable.onERC721Received.selector;
     }
-
 
 }
