@@ -23,6 +23,7 @@ interface IToken is IERC20Upgradeable {
 }
 
 interface INFTBond {
+    function priciple() external view returns(address);
     function requestPriceUpdate() external;
     function setPrice(uint _price) external;
     function getPrice() external view returns (uint _priceInETH, uint _priceInUSD);
@@ -78,7 +79,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
     uint public d33dPrice; //should not be used as oracle
 
     enum MANAGING { RESERVEDEPOSITOR, RESERVESPENDER, RESERVETOKEN, RESERVEMANAGER, LIQUIDITYDEPOSITOR, 
-        LIQUIDITYTOKEN, LIQUIDITYMANAGER, REWARDMANAGER, NFTDEPOSITOR, SUPPORTEDNFT }
+        LIQUIDITYTOKEN, LIQUIDITYMANAGER, REWARDMANAGER, NFTDEPOSITOR, SUPPORTEDNFT  }
 
     event Deposit( address indexed token, uint amount, uint value );
     event DepositNFT( address indexed token, uint id, uint value );
@@ -113,7 +114,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
         IERC721Upgradeable(_token).safeTransferFrom(msg.sender, address(this), _tokenId);
 
-        D33D.mint(msg.sender, _payout);
+        _mint(msg.sender, _payout);
 
         totalReserves = totalReserves + _value;
         emit ReservesUpdated( totalReserves );
@@ -148,7 +149,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
         uint value = lpValuation(_amount, _token); //value from bondCalc
 
-        D33D.mint(msg.sender, _payout);
+        _mint(msg.sender, _payout);
 
         totalReserves = totalReserves + value;
         emit ReservesUpdated( totalReserves );
@@ -175,8 +176,10 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         }
 
         for(uint i=0; i< nftDepositors.length; i++) {
-            (,uint priceUSD) = INFTBond(nftDepositors[i]).getPrice();
-            reserves = reserves + priceUSD;
+            if(isNFTDepositor[nftDepositors[i]]) {
+                (,uint priceUSD) = INFTBond(nftDepositors[i]).getPrice();
+                reserves = reserves + priceUSD;
+            }
         }
 
         totalReserves = reserves;
@@ -196,10 +199,9 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
         uint value = valueOf( _token, _amount );
 
-        // mint OHM needed and store amount of rewards for distribution
+        // mint D33D needed and store amount of rewards for distribution
         send_ = (value -  _profit) * 1e18 / d33dPrice;
-        D33D.mint( msg.sender, send_ );
-
+        _mint(msg.sender, send_);
         //value - send_ is protocol profit
         totalReserves = totalReserves + value ;
         emit ReservesUpdated( totalReserves );
@@ -212,7 +214,9 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         require( isReserveSpender[ msg.sender ] == true, "Not approved" );
 
         uint value = valueOf( _token, _amount );
-        D33D.burnFrom( msg.sender, value );
+        uint quantity = value * 1e18 / d33dPrice;
+
+        D33D.burnFrom( msg.sender, quantity );
 
         totalReserves = totalReserves - value ;
         emit ReservesUpdated( totalReserves );
@@ -222,15 +226,38 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
     }
 
+    ///@param _tokenId Id of the NFT
+    ///@param _bond Bond contract of the nft
+    function manageNFT(uint _tokenId, address _bond) external {
+        require(isReserveManager[msg.sender], "not approved");
+        address token = INFTBond(_bond).priciple();
+        require(isSupportedNFT[token], "Not accepted");
+
+        (,uint value) = INFTBond(_bond).getPrice();
+
+        require( value <= excessReserves(), "reserves" );
+        
+        totalReserves = totalReserves - value;
+        emit ReservesUpdated( totalReserves );
+
+        IERC721Upgradeable(token).safeTransferFrom(address(this), msg.sender, _tokenId);
+        
+    }
+
+    ///@param _amount amount of _token(not d33d)
     function manage( address _token, uint _amount ) external {
+        uint value;
+
         if( isLiquidityToken[ _token ] ) {
             require( isLiquidityManager[ msg.sender ], "Not approved" );
+            value = lpValuation(_amount, _token);
         } else {
             require( isReserveManager[ msg.sender ], "Not approved" );
+            value = valueOf( _token, _amount );
         }
 
-        uint value = valueOf( _token, _amount );
-        require( value <= excessReserves(), "Insufficient reserves" );
+        
+        require( value <= excessReserves(), "reserves" );
 
         totalReserves = totalReserves - value;
         emit ReservesUpdated( totalReserves );
@@ -242,12 +269,16 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
     function mintRewards( address _recipient, uint _amount ) external {
         require( isRewardManager[ msg.sender ], "Not approved" );
-        require( _amount <= excessReserves(), "Insufficient reserves" );
+        require( _amount <= excessReserves(), "reserves" );
 
-        D33D.mint( _recipient, _amount );
+        _mint(_recipient, _amount);
 
         emit RewardsMinted( msg.sender, _recipient, _amount );
     } 
+
+    function _mint(address _user, uint _amount) internal {
+        D33D.mint( _user, _amount );
+    }
 
 
     function valueOf( address _token, uint _amount ) public view returns ( uint value_ ) {
@@ -365,17 +396,6 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         return true;
     }
 
-    function requirements( 
-        mapping( address => uint ) storage queue_, 
-        mapping( address => bool ) storage status_, 
-        address _address 
-    ) internal view returns ( bool ) {
-        if ( !status_[ _address ] ) {
-            require( queue_[ _address ] != 0, "Must queue" );
-            require( queue_[ _address ] <= block.number, "Queue not expired" );
-            return true;
-        } return false;
-    }
 
     function listContains( address[] storage _list, address _token ) internal view returns ( bool ) {
         for( uint i = 0; i < _list.length; i++ ) {

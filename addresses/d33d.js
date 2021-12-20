@@ -53,13 +53,13 @@ module.exports ={
             mana: "0xa287607883c292117d759b5d2cAf97Fd53259F04"
         },
         NFT: {
-            LAND: "0x50f5474724e0Ee42D9a4e711ccFB275809Fd6d4a"
+            LAND: "0x1A797955928b3EB0205aC07efe59fF9a8dF7dD08"
         },
         bond: {
             USDC_bond: "0xD1dB574679f2a8B1DaBe9dfbA2B7977B7c9DB64b",
             SAND_bond: "",
             MANA_bond: "0x1e71bc7b01f92d2850f825fc68905edec33ccb6c",
-            LAND_Bond: "",
+            LAND_Bond: "0x6CD5F56913EF5828ca72887e8C3c532302752c13",
         },
 
         address: {
@@ -68,8 +68,8 @@ module.exports ={
         },
         oracle: {
             LAND: {
-                oracle: "", //replace before deployment
-                jobID: "", //replace before deployment
+                oracle: "0xc57B33452b4F7BB189bB5AfaE9cc4aBa1f7a4FD8", //replace before deployment
+                jobID: "0x6435323730643163333131393431643062303862656164323166656137373437", //replace before deployment
             },
             SAND: {
                 address :"",

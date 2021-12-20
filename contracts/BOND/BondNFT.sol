@@ -8,7 +8,6 @@ import "../../libs/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 import "../../libs/FixedPoint.sol";
 import "../../libs/contracts-upgradeable/token/ERC721/IERC721ReceiverUpgradeable.sol";
 import "../../libs/contracts-upgradeable/token/ERC721/IERC721Upgradeable.sol";
-import "@chainlink/contracts/src/v0.7/ChainlinkClient.sol";
 
 interface IStaking {
     function stake(uint _amount, address _receiver) external returns (bool) ;
@@ -25,8 +24,11 @@ interface IChainlink {
     function latestAnswer() external view returns (int256);
 }
 
-contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
-    using Chainlink for Chainlink.Request;
+interface Ioracle {
+    function requestPriceUpdate() external;
+}
+
+contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using FixedPoint for *;
@@ -39,9 +41,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
     address public DAO;
     address public admin;
 
-    address private oracle;
-    uint private oracleFee;
-    bytes32 private jobId;
+    address public oracle; //contract that calls the price api
 
     bool public isLiquidityBond;
 
@@ -95,7 +95,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         _;
     }
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
-        address _staking, address _DAO, address _admin, address _oracle, bytes32 _jobId, uint _oracleFee) external initializer {
+        address _staking, address _DAO, address _admin, address _oracle) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
         principle  = IERC721Upgradeable(_principle);
         treasury = _treasury;
@@ -107,11 +107,9 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         isLiquidityBond = _bondCalculator != address(0);
         principle.setApprovalForAll(_treasury, true);
 
-        setPublicChainlinkToken();
         oracle = _oracle;
-        jobId = _jobId;
-        oracleFee = _oracleFee ;
 
+        priceMarkdownPerc = 5000;
     }
 
     function initializeBondTerms( 
@@ -191,30 +189,23 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
     ///@notice Used by treasury to trigger a price update
     function requestPriceUpdate() external {
         require(msg.sender == address(treasury), "Only treasury");
-        Chainlink.Request memory request = buildChainlinkRequest(jobId, address(this), this.fulfill.selector);
-
-        request.add("get", "https://api.opensea.io/api/v1/collection/sandbox/stats");
-        request.add("path", "stats.floor_price");
-        request.addInt("times", int(10**18));
-        sendChainlinkRequestTo(oracle, request, oracleFee);
-    }
-
-    function setOracleParams(address _oracle, bytes32 _jobId, uint _oracleFee) external onlyAdmin {
-        oracle = _oracle;
-        jobId = _jobId;
-        oracleFee = _oracleFee ;
+        Ioracle(oracle).requestPriceUpdate();
     }
 
     function setPrice(uint _price) external {
-        require(msg.sender == address(treasury), "Only treasury");
-        priceInETH = _price;
+        require(msg.sender == address(treasury) || 
+            msg.sender == address(oracle), "Only treasury or priceOracle");
+        
+        priceInETH = _price.mul(priceMarkdownPerc).div(10000);
     }
 
     ///@return _priceInETH floor price of collection is ETH (18 decimals)
     ///@return _priceInUSD floor price of collection is USD (18 decimals)
     function getPrice() public view returns (uint _priceInETH, uint _priceInUSD) {
         _priceInETH = priceInETH;
-        _priceInUSD = priceInETH * uint(IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestAnswer()) / (1e8);
+        _priceInUSD = priceInETH * uint(IChainlink(0x9326BFA02ADD2366b30bacB125260Af641031331).latestAnswer()) / (1e8);
+        //CHECK - uncomment for mainnet
+        // _priceInUSD = priceInETH * uint(IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestAnswer()) / (1e8);
     }
 
     ///@notice Function to set the price markdown percentage. 
@@ -223,11 +214,6 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable, ChainlinkClient {
         priceMarkdownPerc = _perc;
     }
 
-    ///@dev Used by oracle to update the floor price
-    function fulfill(bytes32 _requestId, uint256 _priceInETH) external recordChainlinkFulfillment(_requestId)
-    {
-        priceInETH = _priceInETH.mul(priceMarkdownPerc).div(10000);
-    }
     /**
         @notice Function to redeem/stake the vested D33D.
         @param _recipient Address to redeem
