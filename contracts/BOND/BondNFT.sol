@@ -22,6 +22,14 @@ interface ITreasury {
 
 interface IChainlink {
     function latestAnswer() external view returns (int256);
+    function latestRoundData() external view
+    returns (
+      uint80 roundId,
+      int256 answer,
+      uint256 startedAt,
+      uint256 updatedAt,
+      uint80 answeredInRound
+    );
 }
 
 interface Ioracle {
@@ -203,9 +211,9 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     ///@return _priceInUSD floor price of collection is USD (18 decimals)
     function getPrice() public view returns (uint _priceInETH, uint _priceInUSD) {
         _priceInETH = priceInETH;
-        _priceInUSD = priceInETH * uint(IChainlink(0x9326BFA02ADD2366b30bacB125260Af641031331).latestAnswer()) / (1e8);
-        //CHECK - uncomment for mainnet
-        // _priceInUSD = priceInETH * uint(IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestAnswer()) / (1e8);
+        //0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419 - mainnet
+        (,int _price,,,) = IChainlink(0x9326BFA02ADD2366b30bacB125260Af641031331).latestRoundData();
+        _priceInUSD = priceInETH * uint(_price) / (1e8);
     }
 
     ///@notice Function to set the price markdown percentage. 

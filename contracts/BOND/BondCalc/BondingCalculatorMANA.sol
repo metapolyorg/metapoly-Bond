@@ -5,6 +5,14 @@ import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 interface IChainlink {
     function latestAnswer() external view returns (int256);
+    function latestRoundData() external view
+    returns (
+      uint80 roundId,
+      int256 answer,
+      uint256 startedAt,
+      uint256 updatedAt,
+      uint80 answeredInRound
+    );
 }
 
 contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
@@ -30,15 +38,19 @@ contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
 
     ///@return _value MarkdownPrice in usd (18 decimals)
     function valuation( address strategy_, uint amount_ ) external view returns ( uint _value ) {
-        uint mana_eth = (uint(oracleMana_ETH.latestAnswer()) * amount_ * markdownPerc) / 10 ** 22;  //18 decimals
+        (,int _price,,,) = oracleMana_ETH.latestRoundData();
+        uint mana_eth = (uint(_price) * amount_ * markdownPerc) / 10 ** 22;  //18 decimals
 
-        _value = uint(oracleETH_USD.latestAnswer()) * mana_eth / 1e8 ;
+        (,_price,,,) = oracleETH_USD.latestRoundData();
+        _value = uint(_price) * mana_eth / 1e8 ;
     }
 
     ///@return Mardown price of 1 token in USD (18 decimals)
     function markdown( address strategy_ ) external view returns ( uint ) {
-        uint mana_eth = (uint(oracleMana_ETH.latestAnswer()) * markdownPerc) / 10000;  //18 decimals
-
-        return uint(oracleETH_USD.latestAnswer()) * mana_eth / 1e8 ;
+        (,int _price,,,) = oracleMana_ETH.latestRoundData();
+        uint mana_eth = (uint(_price) * markdownPerc) / 10000;  //18 decimals
+        
+        (,_price,,,) = oracleETH_USD.latestRoundData();
+        return uint(_price) * mana_eth / 1e8 ;
     }
 }
