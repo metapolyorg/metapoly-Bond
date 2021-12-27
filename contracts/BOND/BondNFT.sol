@@ -97,6 +97,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     event BondRedeemed( address indexed recipient, uint payout, uint remaining );
     event BondPriceChanged( uint indexed priceInUSD, uint indexed internalPrice, uint indexed debtRatio );
     event ControlVariableAdjustment( uint initialBCV, uint newBCV, uint adjustment, bool addition );
+    event OracleChanged (address);
 
     modifier onlyAdmin {
         require(msg.sender == admin, "Only admin");
@@ -220,6 +221,11 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     function setMarkdownValue(uint _perc) external {
         require(msg.sender == address(treasury), "Only treasury");
         priceMarkdownPerc = _perc;
+    }
+
+    function changeOracle(address _oracle) external onlyAdmin {
+        oracle = _oracle;
+        emit OracleChanged(_oracle);
     }
 
     /**

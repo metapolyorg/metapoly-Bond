@@ -1,6 +1,7 @@
 pragma solidity 0.8.7;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
 interface IBond {
     function setPrice(uint) external ;
@@ -10,11 +11,10 @@ interface IERC20 {
     function transfer(address, uint) external;
 }
 
-contract PriceUpdater is ChainlinkClient {
+contract PriceUpdater is ChainlinkClient, OwnableUpgradeable {
     using Chainlink for Chainlink.Request;
 
     address public bond;
-    address public admin;
     address private oracle;
     uint private oracleFee;
     bytes32 private jobId; 
@@ -24,27 +24,23 @@ contract PriceUpdater is ChainlinkClient {
     int times;
 
 
-    modifier onlyAdmin {
-        require(msg.sender == admin, "Only Admin");
-        _;
-    }
-
-    constructor(address _admin, address _oracle, bytes32 _jobId, uint _oracleFee) {
+    constructor(address _oracle, bytes32 _jobId, uint _oracleFee) {
         setPublicChainlinkToken();
 
-        admin = _admin;
         oracle = _oracle;
         jobId = _jobId;
-        oracleFee = _oracleFee ;        
+        oracleFee = _oracleFee ;      
+
+        __Ownable_init();
     }
 
-    function updateOracleParams(address _oracle, bytes32 _jobId, uint _oracleFee) external onlyAdmin {
+    function updateOracleParams(address _oracle, bytes32 _jobId, uint _oracleFee) external onlyOwner {
         oracle = _oracle;
         jobId = _jobId;
         oracleFee = _oracleFee ;
     }
 
-    function updatePriceApi(address _bond, string memory _url, string memory _path, int _times) external onlyAdmin {
+    function updatePriceApi(address _bond, string memory _url, string memory _path, int _times) external onlyOwner {
         bond = _bond;
         url = _url;
         path = _path;
@@ -69,8 +65,8 @@ contract PriceUpdater is ChainlinkClient {
         IBond(bond).setPrice(_priceInETH);
     }
 
-    function withdrawLINK(uint _amount) external onlyAdmin {
-        IERC20(chainlinkTokenAddress()).transfer(admin, _amount);
+    function withdrawLINK(address _to, uint _amount) external onlyOwner {
+        IERC20(chainlinkTokenAddress()).transfer(_to, _amount);
     }
 
 
