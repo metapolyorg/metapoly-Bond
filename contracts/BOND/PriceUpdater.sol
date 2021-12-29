@@ -1,7 +1,7 @@
 pragma solidity 0.8.7;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IBond {
     function setPrice(uint) external ;
@@ -11,7 +11,7 @@ interface IERC20 {
     function transfer(address, uint) external;
 }
 
-contract PriceUpdater is ChainlinkClient, OwnableUpgradeable {
+contract PriceUpdater is ChainlinkClient, Ownable {
     using Chainlink for Chainlink.Request;
 
     address public bond;
@@ -31,7 +31,6 @@ contract PriceUpdater is ChainlinkClient, OwnableUpgradeable {
         jobId = _jobId;
         oracleFee = _oracleFee ;      
 
-        __Ownable_init();
     }
 
     function updateOracleParams(address _oracle, bytes32 _jobId, uint _oracleFee) external onlyOwner {
