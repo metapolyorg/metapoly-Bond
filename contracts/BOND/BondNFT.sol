@@ -17,7 +17,6 @@ interface ITreasury {
     function deposit(uint amount, address principle, uint profit) external ;
     function depositNFT(uint _tokenId, address _token, uint _payout, uint _value) external returns (uint);
     function valueOf( address _token, uint _amount ) external view returns ( uint value_ );
-    function cestaPrice() external view returns (uint);
 }
 
 interface IChainlink {
@@ -175,7 +174,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         }
 
         // total debt is increased
-        totalDebt = totalDebt.add( payout ); 
+        totalDebt = totalDebt.add( priceInUSD * 10000 / priceMarkdownPerc ); //add price paid by user(unmarkdowned)
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
@@ -214,6 +213,8 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         _priceInETH = priceInETH;
         //0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419 - mainnet
         (,int _price,,,) = IChainlink(0x9326BFA02ADD2366b30bacB125260Af641031331).latestRoundData();
+        // (,int _price,,,) = IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestRoundData();
+
         _priceInUSD = priceInETH * uint(_price) / (1e8);
     }
 
@@ -373,7 +374,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     }
 
     function _bondPrice() internal returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 )/* .add(1e17) */;
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
