@@ -17,7 +17,6 @@ interface IChainlink {
 
 contract BondingCalculatorSAND is Initializable, OwnableUpgradeable{
 
-    address public CESTA;
     IChainlink public oracleSand_USD;
     uint markdownPerc; //2 decimals 5000 for 50%
     function initialize( uint markdownPerc_, address admin_, IChainlink _oracleSand_USD) external initializer{

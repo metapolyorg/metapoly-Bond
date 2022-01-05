@@ -20,7 +20,6 @@ interface ITreasury {
     function depositBond(uint amount, address principle, uint payout) external ;
     
     function valueOf( address _token, uint _amount ) external view returns ( uint value_ );
-    function cestaPrice() external view returns (uint);
 }
 
 interface IBondCalculator {
@@ -34,7 +33,7 @@ contract BondContractLP is Initializable {
     using SafeERC20Upgradeable for IPrinciple;
     using FixedPoint for *;
 
-    IERC20Upgradeable public CESTA;
+    IERC20Upgradeable public D33D;
     IPrinciple public principle;
     address public treasury;
     address public BondCalculator;
@@ -63,7 +62,7 @@ contract BondContractLP is Initializable {
 
     // Info for bond holder
     struct Bond {
-        uint payout; // CESTA remaining to be paid
+        uint payout; // D33D remaining to be paid
         uint vesting; // Blocks left to vest
         uint lastTimestamp; // Last interaction
         uint pricePaid; // In USd, for front end viewing
@@ -89,9 +88,9 @@ contract BondContractLP is Initializable {
         require(msg.sender == admin, "Only admin");
         _;
     }
-    function initialize(address _CESTA, address _principle, address _treasury, address _bondCalculator, 
+    function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
         address _staking, address _DAO, address _admin) external initializer {
-        CESTA = IERC20Upgradeable(_CESTA); 
+        D33D = IERC20Upgradeable(_D33D); 
         principle  = IPrinciple(_principle);
         treasury = _treasury;
         BondCalculator = _bondCalculator;
@@ -129,10 +128,10 @@ contract BondContractLP is Initializable {
 
     /**
         @notice Function to deposit principleToken. Principle token is deposited to treasury
-        and CESTA is minted. The minted CESTA is vested for a specific time.
+        and D33D is minted. The minted D33D is vested for a specific time.
         @param _amount quantity of principle token to deposit
         @param _maxPrice Used for slippage handling. Price in terms of principle token.
-        @param _depositer address of User to receive bond cesta
+        @param _depositer address of User to receive bond D33D
      */
     function deposit(uint _amount, uint _maxPrice, address _depositer) external returns (uint){
         require(_amount > 0, "Invalid amount");
@@ -148,9 +147,9 @@ contract BondContractLP is Initializable {
         uint value = ITreasury( treasury ).valueOf(address(principle), _amount);
         uint payout = payoutFor(value);
 
-        require( payout >= 1e16, "Bond too small" ); // must be > 0.01 CESTA ( underflow protection )
+        require( payout >= 1e16, "Bond too small" ); // must be > 0.01 D33D ( underflow protection )
         
-        if(CESTA.totalSupply() > 0) {
+        if(D33D.totalSupply() > 0) {
             require( payout <= maxPayout(), "Bond too large"); // size protection because there is no slippage 
         }
         // profits are calculated
@@ -158,13 +157,17 @@ contract BondContractLP is Initializable {
 
         principle.safeTransferFrom(msg.sender, address(this), _amount);
         ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
+
+        if(fee > 0) {
+            D33D.safeTransfer(DAO, fee);
+        }
         
         // total debt is increased
         totalDebt = totalDebt.add( value ); 
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ).add(fee), //additional 10% from DAO fee is sent to user
+            payout: bondInfo[ _depositer ].payout.add( payout ),
             vesting: terms.vestingTerm,
             lastTimestamp: block.timestamp,
             pricePaid: priceInUSD
@@ -179,9 +182,9 @@ contract BondContractLP is Initializable {
     }
 
     /**
-        @notice Function to redeem/stake the vested CESTA.
+        @notice Function to redeem/stake the vested D33D.
         @param _recipient Address to redeem
-        @param _stake Whether to stake/redeem the vested CESTA
+        @param _stake Whether to stake/redeem the vested D33D
      */
     function redeem( address _recipient, bool _stake ) external returns ( uint ) {        
         Bond memory info = bondInfo[ _recipient ];
@@ -210,18 +213,18 @@ contract BondContractLP is Initializable {
 
     function stakeOrSend( address _recipient, bool _stake, uint _amount ) internal returns ( uint ) {
         if ( !_stake ) { // if user does not want to stake
-            CESTA.safeTransfer( _recipient, _amount ); // send payout
+            D33D.safeTransfer( _recipient, _amount ); // send payout
         } else { // if user wants to stake
-                CESTA.approve( Staking, _amount );
+                D33D.approve( Staking, _amount );
                 IStaking( Staking ).stake( _amount, _recipient );
         }
         return _amount;
     }    
 
     /**
-        @notice Function to get the amount of CESTA that can be redeemed.
+        @notice Function to get the amount of D33D that can be redeemed.
         @param _depositor address of user
-        @return pendingPayout_ Quantity of CESTA that can be redeemed
+        @return pendingPayout_ Quantity of D33D that can be redeemed
      */
     function pendingPayoutFor( address _depositor ) external view returns ( uint pendingPayout_ ) {
         uint percentVested = percentVestedFor( _depositor );
@@ -336,13 +339,13 @@ contract BondContractLP is Initializable {
     }
         
     ///@param _value Value in USD (18 decimals)
-    ///@return Returns quantity of CESTA for the value
+    ///@return Returns quantity of D33D for the value
     function payoutFor( uint _value ) public view returns ( uint ) {
         return _value.mul(1e18).div(bondPrice());
     }
 
     function debtRatio() public view returns ( uint debtRatio_ ) {   
-        uint supply = CESTA.totalSupply();
+        uint supply = D33D.totalSupply();
         if(supply == 0) {
             return 0;
         }
@@ -372,6 +375,6 @@ contract BondContractLP is Initializable {
     }
 
     function maxPayout() public view returns ( uint ) {
-        return CESTA.totalSupply().mul( terms.maxPayout ).div( 100000 );
+        return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
 }

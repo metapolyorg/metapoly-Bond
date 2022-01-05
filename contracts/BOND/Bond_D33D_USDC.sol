@@ -157,13 +157,17 @@ contract BondD33DUSDCLP is Initializable {
 
         principle.safeTransferFrom(msg.sender, address(this), _amount);
         ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
+
+        if(fee > 0) {
+            D33D.safeTransfer(DAO, fee);
+        }
         
         // total debt is increased
         totalDebt = totalDebt.add( value ); 
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ).add(fee), //additional 10% from DAO fee is sent to user
+            payout: bondInfo[ _depositer ].payout.add( payout ),
             vesting: terms.vestingTerm,
             lastTimestamp: block.timestamp,
             pricePaid: priceInUSD

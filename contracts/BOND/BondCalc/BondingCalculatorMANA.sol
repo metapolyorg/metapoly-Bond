@@ -17,7 +17,6 @@ interface IChainlink {
 
 contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
 
-    address public CESTA;
     IChainlink public oracleMana_ETH;
     IChainlink public oracleETH_USD;
     uint markdownPerc; //2 decimals 5000 for 50%
