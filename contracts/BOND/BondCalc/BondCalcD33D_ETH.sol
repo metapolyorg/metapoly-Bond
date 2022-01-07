@@ -16,7 +16,7 @@ interface IRouter {
     function getAmountsOut(uint, address[] memory) external view returns (uint[] memory);
 }
 
-contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
+contract BondingCalculatorD33D_ETH is Initializable, OwnableUpgradeable{
 
     address public D33D;
     address public WETH;

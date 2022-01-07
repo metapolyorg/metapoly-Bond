@@ -17,6 +17,7 @@ interface IChainlink {
 
 contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
 
+    
     IChainlink public oracleMana_ETH;
     IChainlink public oracleETH_USD;
     uint markdownPerc; //2 decimals 5000 for 50%
@@ -58,6 +59,6 @@ contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
         (,int _priceMANA_ETH,,,) = oracleMana_ETH.latestRoundData(); //18 decimals
         (,int _priceETH_USD,,,) = oracleETH_USD.latestRoundData(); //8 decimals
 
-        return uint(_priceMANA_ETH) * uint(_priceETH_USD) * 1e8;
+        return uint(_priceMANA_ETH) * uint(_priceETH_USD) / 1e8;
     }
 }
