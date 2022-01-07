@@ -52,4 +52,12 @@ contract BondingCalculatorMANA is Initializable, OwnableUpgradeable{
         (,_price,,,) = oracleETH_USD.latestRoundData();
         return uint(_price) * mana_eth / 1e8 ;
     }
+
+    ///@return Price of MANA in USD (18 decimals)
+    function getRawPrice() external view returns (uint) {
+        (,int _priceMANA_ETH,,,) = oracleMana_ETH.latestRoundData(); //18 decimals
+        (,int _priceETH_USD,,,) = oracleETH_USD.latestRoundData(); //8 decimals
+
+        return uint(_priceMANA_ETH) * uint(_priceETH_USD) * 1e8;
+    }
 }

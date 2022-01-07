@@ -74,4 +74,9 @@ contract BondingCalculatorD33D_USDC is Initializable, OwnableUpgradeable{
     function markdown( address strategy_ ) external view returns ( uint ) {
         return lpPrice(1e18) * markdownPerc / 10000;
     }
+
+    ///@return Price of LP token in USD (18 decimals)
+    function getRawPrice() external view returns (uint) {
+        return lpPrice(1e18);
+    }
 }

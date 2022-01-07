@@ -43,4 +43,11 @@ contract BondingCalculatorSAND is Initializable, OwnableUpgradeable{
         (,int _price,,,) = oracleSand_USD.latestRoundData();
         return (uint(_price) * 1e18 * markdownPerc) / 10 ** 12;
     }
+
+    ///@return Price of SAND in USD (18 decimals)
+    function getRawPrice() external view returns (uint) {
+        (,int _price,,,) = oracleSand_USD.latestRoundData();
+
+        return uint(_price) * 1e10;
+    }
 }

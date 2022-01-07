@@ -25,6 +25,7 @@ interface ITreasury {
 interface IBondCalculator {
     function valuation( address _LP, uint _amount ) external view returns ( uint );
     function markdown( address _LP ) external view returns ( uint );
+    function getRawPrice() external view returns (uint);
 }
 
 contract BondContractLP is Initializable {
@@ -312,7 +313,7 @@ contract BondContractLP is Initializable {
     ///@return price_ price in usd (in principle decimals)
     function bondPriceInUSD() public view returns ( uint price_ ) {
         if( isLiquidityBond ) {
-            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).markdown( address(principle) ) ).div(1e18);
+            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).getRawPrice( ) ).div(1e18);
         } else {
             price_ = bondPrice() .mul( 10 ** principle.decimals() ) .div(1e18);
         }
