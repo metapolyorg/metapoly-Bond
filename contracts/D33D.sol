@@ -17,8 +17,8 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     mapping (address => uint256) private _balances;
     uint256 private _totalSupply;
 
-    bool public isSenderTaxed; 
-    bool public isReceiverTaxed;
+    bool public isSellTaxed; 
+    bool public isBuyTaxed;
     address public taxReceiver;
 
     event TreasuryUpdated(address newTreasury);
@@ -35,6 +35,8 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
         __Ownable_init();
+
+        taxReceiver = treasury;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
@@ -42,7 +44,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         emit TreasuryUpdated(treasury_);
     }
 
-    function settaxPerc(uint _taxPerc) external onlyOwner {
+    function setTaxPerc(uint _taxPerc) external onlyOwner {
         taxPerc = _taxPerc;
         emit TaxPercUpdated(_taxPerc);
     }
@@ -52,10 +54,10 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         emit UpdateTaxReceiver(_receiver);
     }
 
-    function toggleFee(bool _overallFeeStatus, bool _isSenderTaxed, bool _isReceiverTaxed) external onlyOwner {
+    function toggleFee(bool _overallFeeStatus, bool _isSellTaxed, bool _isBuyTaxed) external onlyOwner {
         feeOn = _overallFeeStatus;
-        isSenderTaxed = _isSenderTaxed;
-        isReceiverTaxed = _isReceiverTaxed;
+        isSellTaxed = _isSellTaxed;
+        isBuyTaxed = _isBuyTaxed;
     }
 
     function updateDexAddress(address _dex, bool _status) external onlyOwner {
@@ -116,22 +118,26 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _beforeTokenTransfer(sender, recipient, amount);
 
         
-        uint _treasuryTax = isDex[sender] || isDex[recipient] ? amount * taxPerc / 10000 : 0;
 
         uint _amountSender = amount;
         uint _amountReceiver = amount;
         uint _totalTax;
 
         if(feeOn && (isDex[sender] || isDex[recipient])) {
-            if(isSenderTaxed) {
+            uint _treasuryTax = amount * taxPerc / 10000;
+
+            //sell : user -> dex
+            //user pays more d33d
+            if(isSellTaxed && isDex[recipient]) {
                 _amountSender = _amountSender + _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax ;
             }
 
-            if(isReceiverTaxed) {
+            //buy : dex -> user
+            //user receives less d33d
+            if(isBuyTaxed && isDex[sender]) {
                 _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax;
-
             }
         }
         require(_balances[sender] >= _amountSender, "ERC20: transfer amount exceeds balance");
