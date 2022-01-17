@@ -19,6 +19,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
     bool public isSellTaxed; 
     bool public isBuyTaxed;
+    bool public unlocked;
     address public taxReceiver;
 
     event TreasuryUpdated(address newTreasury);
@@ -64,6 +65,10 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         isDex[_dex] = _status;
 
         emit UpdateDex(_dex, _status);
+    }
+
+    function unlock() external onlyOwner {
+        unlocked = true;
     }
 
     function balanceOf(address account) public view override returns (uint256) {
@@ -117,9 +122,11 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         _beforeTokenTransfer(sender, recipient, amount);
 
+        //antiSnipe bot
+        if(unlocked == false) {
+            require(sender == owner() || isDex[sender], "locked" );
+        }
         
-
-        uint _amountSender = amount;
         uint _amountReceiver = amount;
         uint _totalTax;
 
@@ -127,9 +134,10 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
             uint _treasuryTax = amount * taxPerc / 10000;
 
             //sell : user -> dex
-            //user pays more d33d
+            //user pays {amount} d33d out of which {taxPerc} percentage is tranferred to treasury
+            //remaining to dex
             if(isSellTaxed && isDex[recipient]) {
-                _amountSender = _amountSender + _treasuryTax;
+                _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax ;
             }
 
@@ -140,10 +148,10 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
                 _totalTax = _totalTax + _treasuryTax;
             }
         }
-        require(_balances[sender] >= _amountSender, "ERC20: transfer amount exceeds balance");
+        require(_balances[sender] >= amount, "ERC20: transfer amount exceeds balance");
 
         unchecked {
-            _balances[sender] = _balances[sender] - _amountSender;
+            _balances[sender] = _balances[sender] - amount;
             _balances[taxReceiver] = _balances[taxReceiver] + (_totalTax);
             _balances[recipient] = _balances[recipient] + (_amountReceiver);
         }
