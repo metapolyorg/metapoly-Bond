@@ -13,6 +13,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     uint public taxPerc; //300 for 3 % (2 decimals)
 
     mapping(address => bool) isDex;
+    mapping(address => bool) isExcluded;
 
     mapping (address => uint256) private _balances;
     uint256 private _totalSupply;
@@ -24,6 +25,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
     event TreasuryUpdated(address newTreasury);
     event UpdateDex(address dex,bool status);
+    event UpdateExcluded(address account,bool status);
     event UpdateTaxReceiver(address receiver);
     event TaxPercUpdated(uint _newPerc);
     
@@ -67,6 +69,12 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         emit UpdateDex(_dex, _status);
     }
 
+    function updateExcluded(address _account, bool _status) external onlyOwner {
+        isExcluded[_account] = _status;
+
+        emit UpdateExcluded(_account, _status);
+    }
+
     function unlock() external onlyOwner {
         unlocked = true;
     }
@@ -75,7 +83,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         return _balances[account];
     }
 
-    function totalSupply() public view virtual override returns (uint256) {
+    function totalSupply() public view override returns (uint256) {
         return _totalSupply;
     }
 
@@ -87,7 +95,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         super._beforeTokenTransfer(from, to, amount);
     }
 
-    function mint(address _to, uint256 _amount) public onlyTreasury {
+    function mint(address _to, uint256 _amount) external onlyTreasury {
         _mint(_to, _amount);
     }
 
@@ -124,13 +132,13 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         //antiSnipe bot
         if(unlocked == false) {
-            require(sender == owner() || isDex[sender], "locked" );
+            require(sender == owner(), "locked" );
         }
         
         uint _amountReceiver = amount;
         uint _totalTax;
 
-        if(feeOn && (isDex[sender] || isDex[recipient])) {
+        if(feeOn && (isDex[sender] || isDex[recipient]) && !(isExcluded[sender] || isExcluded[recipient])) {
             uint _treasuryTax = amount * taxPerc / 10000;
 
             //sell : user -> dex
