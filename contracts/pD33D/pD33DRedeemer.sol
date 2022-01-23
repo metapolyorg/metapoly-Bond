@@ -54,14 +54,17 @@ contract pD33DRedeemer is Initializable, OwnableUpgradeable {
         terms[ _vester ].percent = _rate;
     }
 
+    /// @param _amount Aount of D33D to redeem (1 pD33D = 1 D33D)
     function redeem( uint _amount, bytes calldata _signature, bool _stake ) external {
         if (_signature.length == 0) { // No signature, whitelisted in contract
             Term memory info = terms[ msg.sender ];
+            require(info.percent != 0, "Not whitelisted");
             require( redeemable( info ) >= _amount, 'Not enough vested' );
             require( info.max -  info.claimed >= _amount, 'Claimed over max' );
 
             terms[ msg.sender ].claimed = info.claimed +  _amount;
         } else {
+            require(terms[msg.sender].percent == 0, "On-chain whitelisted");
             bytes32 message = keccak256(abi.encodePacked(msg.sender));
             bytes32 messageHash = ECDSAUpgradeable.toEthSignedMessageHash(message);
             address recoveredAddr = ECDSAUpgradeable.recover(messageHash, _signature);
@@ -81,8 +84,15 @@ contract pD33DRedeemer is Initializable, OwnableUpgradeable {
         }
     }
 
-    function redeemableFor( address _vester ) public view returns (uint) {
-        return redeemable( terms[ _vester ]);
+    function redeemableFor( address _vester ) external view returns (uint) {
+        uint pD33DAmt = pD33D.balanceOf(_vester);
+        if (terms[ _vester ].percent != 0) { // On-chain whitelisted
+            uint _reedeemable = redeemable( terms[ _vester ]);
+            if (pD33D.balanceOf(_vester) > _reedeemable) return _reedeemable;
+            else return pD33DAmt;
+        } else {
+            return pD33DAmt;
+        }
     }
     
     function redeemable( Term memory _info ) internal view returns ( uint ) {
