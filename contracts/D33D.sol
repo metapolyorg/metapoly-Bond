@@ -23,6 +23,8 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     bool public unlocked;
     address public taxReceiver;
 
+    uint256 private _cap;
+
     event TreasuryUpdated(address newTreasury);
     event UpdateDex(address dex,bool status);
     event UpdateExcluded(address account,bool status);
@@ -34,12 +36,13 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _;
     }
 
-    function initialize(string memory _name, string memory _symbol) external initializer {
+    function initialize(string memory _name, string memory _symbol, uint cap) external initializer {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
         __Ownable_init();
 
         taxReceiver = treasury;
+        _cap = cap;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
@@ -87,6 +90,10 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         return _totalSupply;
     }
 
+    function cap() public view returns (uint256) {
+        return _cap;
+    }
+
     function _beforeTokenTransfer(address from, address to, uint256 amount) 
         internal 
         virtual 
@@ -96,6 +103,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     }
 
     function mint(address _to, uint256 _amount) external onlyTreasury {
+        require(totalSupply() + _amount <= cap(), "cap exceeded");
         _mint(_to, _amount);
     }
 
