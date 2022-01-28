@@ -7,7 +7,8 @@ import "../../libs/contracts-upgradeable/token/ERC20/SafeERC20Upgradeable.sol";
 import "../../libs/contracts-upgradeable/math/SafeMathUpgradeable.sol";
 import "../../libs/FixedPoint.sol";
 
-interface IPrinciple is IERC20Upgradeable {
+interface IWETH is IERC20Upgradeable {
+    function deposit() external payable;
     function decimals() external view returns(uint);
 }
 
@@ -25,18 +26,19 @@ interface ITreasury {
 interface IBondCalculator {
     function valuation( address _LP, uint _amount ) external view returns ( uint );
     function markdown( address _LP ) external view returns ( uint );
-
     function getRawPrice() external view returns (uint);
 }
 
-contract BondD33DUSDCLP is Initializable {
+
+
+contract BondContractETH is Initializable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
-    using SafeERC20Upgradeable for IPrinciple;
+    using SafeERC20Upgradeable for IWETH;
     using FixedPoint for *;
 
     IERC20Upgradeable public D33D;
-    IPrinciple public principle;
+    IWETH public principle;
     address public treasury;
     address public BondCalculator;
     address public Staking;
@@ -93,7 +95,7 @@ contract BondD33DUSDCLP is Initializable {
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
         address _staking, address _DAO, address _admin) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
-        principle  = IPrinciple(_principle);
+        principle  = IWETH(_principle);
         treasury = _treasury;
         BondCalculator = _bondCalculator;
         Staking = _staking;
@@ -135,7 +137,7 @@ contract BondD33DUSDCLP is Initializable {
         @param _maxPrice Used for slippage handling. Price in terms of principle token.
         @param _depositer address of User to receive bond D33D
      */
-    function deposit(uint _amount, uint _maxPrice, address _depositer) external returns (uint){
+    function deposit(uint _amount, uint _maxPrice, address _depositer) external payable returns (uint){
         require(_amount > 0, "Invalid amount");
         require(_depositer != address(0), "Invalid address");
 
@@ -157,7 +159,8 @@ contract BondD33DUSDCLP is Initializable {
         // profits are calculated
         uint fee = payout .mul(terms.fee).div(10000);
 
-        principle.safeTransferFrom(msg.sender, address(this), _amount);
+        principle.deposit{value: msg.value}();
+        require(_amount == principle.balanceOf(address(this)), "Incorrect _amount");
         ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
 
         if(fee > 0) {
@@ -322,8 +325,8 @@ contract BondD33DUSDCLP is Initializable {
 
     ///@return price_ price interms of principle token (18 decimals)
     function bondPrice() public view returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e5);
-        
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add( 1e12 );
+
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;
         }
@@ -331,7 +334,7 @@ contract BondD33DUSDCLP is Initializable {
     }
 
     function _bondPrice() internal returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e11);
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e13);
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
