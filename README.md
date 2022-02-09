@@ -10,6 +10,6 @@ A certain percentage of fee will be impose to any transfer that through decentra
 
 A cap is set and the token contract can't mint more than the cap.
 
-### Anti-snipe by lock the transfer
+### Anti-snipe by lock the transfer initially
 
-The transfer function will only available at random time after first liquidity added before announce to public. This is to prevent bot manipulate the token price.
+The transfer function will only available at random time after first liquidity added before announce to public. This is to prevent bot manipulate the token price. There is no possible to lock back after unlock.
