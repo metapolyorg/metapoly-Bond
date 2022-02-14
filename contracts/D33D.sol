@@ -36,13 +36,13 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _;
     }
 
-    function initialize(string memory _name, string memory _symbol, uint cap) external initializer {
+    function initialize(string memory _name, string memory _symbol, uint cap_) external initializer {
         __ERC20_init(_name, _symbol);
         __ERC20Burnable_init();
         __Ownable_init();
 
         taxReceiver = treasury;
-        _cap = cap;
+        _cap = cap_;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
