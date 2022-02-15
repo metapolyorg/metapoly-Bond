@@ -334,11 +334,9 @@ contract BondContractLP is Initializable {
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
-        } else if ( terms.minimumPrice != 0 ) {
-            terms.minimumPrice = 0;
         }
     }
-        
+
     ///@param _value Value in USD (18 decimals)
     ///@return Returns quantity of D33D for the value
     function payoutFor( uint _value ) public view returns ( uint ) {
