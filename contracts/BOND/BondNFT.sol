@@ -35,7 +35,7 @@ interface Ioracle {
     function requestPriceUpdate() external;
 }
 
-contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
+contract BondNFT is Initializable, IERC721ReceiverUpgradeable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using FixedPoint for *;
@@ -428,5 +428,9 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         bytes calldata data
     ) external override pure returns (bytes4) {
         return IERC721ReceiverUpgradeable.onERC721Received.selector;
+    }
+
+    function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
+        terms.minimumPrice = _minimumPrice;
     }
 }
