@@ -376,4 +376,8 @@ contract BondContractLP is Initializable {
     function maxPayout() public view returns ( uint ) {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
+
+    function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
+        terms.minimumPrice = _minimumPrice;
+    }
 }
