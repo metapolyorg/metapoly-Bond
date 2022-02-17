@@ -92,6 +92,8 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
 
     enum PARAMETER { VESTING, PAYOUT, FEE, DEBT }
 
+    address private _trustedForwarder;
+
     event BondCreated( uint tokenId, uint indexed payout, uint indexed expires, uint indexed priceInUSD );
     event BondRedeemed( address indexed recipient, uint payout, uint remaining );
     event BondPriceChanged( uint indexed priceInUSD, uint indexed internalPrice, uint indexed debtRatio );
@@ -103,7 +105,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         _;
     }
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
-        address _staking, address _DAO, address _admin, address _oracle) external initializer {
+        address _staking, address _DAO, address _admin, address _oracle, address _trustedForwarderAddress) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
         principle  = IERC721Upgradeable(_principle);
         treasury = _treasury;
@@ -111,6 +113,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         Staking = _staking;
         DAO = _DAO;
         admin = _admin;
+        _trustedForwarder = _trustedForwarderAddress;
 
         isLiquidityBond = _bondCalculator != address(0);
         principle.setApprovalForAll(_treasury, true);
@@ -165,7 +168,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         require( payout >= 1e16, "Bond too small" ); // must be > 0.01 D33D ( underflow protection )
         uint fee = payout.mul(terms.fee).div(10000);
 
-        principle.safeTransferFrom(msg.sender, address(this), _tokenId);
+        principle.safeTransferFrom(_msgSender(), address(this), _tokenId);
 
         ITreasury( treasury ).depositNFT( _tokenId, address(principle), payout.add(fee), priceInUSD); 
 
@@ -212,7 +215,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     function getPrice() public view returns (uint _priceInETH, uint _priceInUSD) {
         _priceInETH = priceInETH;
         //0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419 - mainnet
-        (,int _price,,,) = IChainlink(0x9326BFA02ADD2366b30bacB125260Af641031331).latestRoundData();
+        (,int _price,,,) = IChainlink(0x8A753747A1Fa494EC906cE90E9f37563A8AF630e).latestRoundData();
         // (,int _price,,,) = IChainlink(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419).latestRoundData();
 
         _priceInUSD = priceInETH * uint(_price) / (1e8);
@@ -431,4 +434,39 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
     ) external override pure returns (bytes4) {
         return IERC721ReceiverUpgradeable.onERC721Received.selector;
     }
+
+function trustedForwarder() public view returns (address){
+        return _trustedForwarder;
+    }
+
+    function setTrustedForwarder(address _forwarder) external onlyAdmin {
+        _trustedForwarder = _forwarder;
+    }
+
+    function isTrustedForwarder(address forwarder) public view returns(bool) {
+        return forwarder == _trustedForwarder;
+    }
+
+    /**
+     * return the sender of this call.
+     * if the call came through our trusted forwarder, return the original sender.
+     * otherwise, return `msg.sender`.
+     * should be used in the contract anywhere instead of msg.sender
+     */
+    function _msgSender() internal view returns (address ret) {
+        if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+            // At this point we know that the sender is a trusted forwarder,
+            // so we trust that the last bytes of msg.data are the verified sender address.
+            // extract sender address from the end of msg.data
+            assembly {
+                ret := shr(96,calldataload(sub(calldatasize(),20)))
+            }
+        } else {
+            ret = msg.sender;
+        }
+    }
+    function versionRecipient() external view returns (string memory) {
+        return "1";
+    }
+    
 }
