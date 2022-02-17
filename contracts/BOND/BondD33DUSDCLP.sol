@@ -17,16 +17,19 @@ interface IStaking {
 
 interface ITreasury {
     function deposit(uint amount, address principle, uint profit) external ;
+    function depositBond(uint amount, address principle, uint payout) external ;
+    
     function valueOf( address _token, uint _amount ) external view returns ( uint value_ );
-    function d33dPrice() external view returns (uint);
 }
 
 interface IBondCalculator {
     function valuation( address _LP, uint _amount ) external view returns ( uint );
     function markdown( address _LP ) external view returns ( uint );
+
+    function getRawPrice() external view returns (uint);
 }
 
-contract BondContract is Initializable {
+contract BondD33DUSDCLP is Initializable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using SafeERC20Upgradeable for IPrinciple;
@@ -77,7 +80,6 @@ contract BondContract is Initializable {
     }
 
     enum PARAMETER { VESTING, PAYOUT, FEE, DEBT }
-    address private _trustedForwarder;
 
     event BondCreated( uint deposit, uint indexed payout, uint indexed expires, uint indexed priceInUSD );
     event BondRedeemed( address indexed recipient, uint payout, uint remaining );
@@ -89,7 +91,7 @@ contract BondContract is Initializable {
         _;
     }
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
-        address _staking, address _DAO, address _admin, address _trustedForwarderAddress) external initializer {
+        address _staking, address _DAO, address _admin) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
         principle  = IPrinciple(_principle);
         treasury = _treasury;
@@ -97,7 +99,6 @@ contract BondContract is Initializable {
         Staking = _staking;
         DAO = _DAO;
         admin = _admin;
-        _trustedForwarder = _trustedForwarderAddress;
 
         isLiquidityBond = _bondCalculator != address(0);
         principle.safeApprove(_treasury, type(uint).max);
@@ -123,7 +124,6 @@ contract BondContract is Initializable {
             maxDebt: _maxDebt
         });
         totalDebt = _initialDebt;
-        // lastDecay = block.number; //changed
         lastDecay = block.timestamp; 
 
     }
@@ -133,7 +133,7 @@ contract BondContract is Initializable {
         and D33D is minted. The minted D33D is vested for a specific time.
         @param _amount quantity of principle token to deposit
         @param _maxPrice Used for slippage handling. Price in terms of principle token.
-        @param _depositer address of User to receive bond d33d
+        @param _depositer address of User to receive bond D33D
      */
     function deposit(uint _amount, uint _maxPrice, address _depositer) external returns (uint){
         require(_amount > 0, "Invalid amount");
@@ -156,23 +156,20 @@ contract BondContract is Initializable {
         }
         // profits are calculated
         uint fee = payout .mul(terms.fee).div(10000);
-        uint profit;
-        {
-            uint d33dInUSD = ITreasury(treasury).d33dPrice();
-            uint payoutInUSD = payout.mul(d33dInUSD).div(1e18); //18 decimals
-            uint feeInUSD = fee.mul(d33dInUSD).div(1e18);
-            profit = value.sub(payoutInUSD).sub(feeInUSD);
-        }
 
-        principle.safeTransferFrom(_msgSender(), address(this), _amount);
-        ITreasury( treasury ).deposit( _amount, address(principle), profit ); 
+        principle.safeTransferFrom(msg.sender, address(this), _amount);
+        ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
+
+        if(fee > 0) {
+            D33D.safeTransfer(DAO, fee);
+        }
         
         // total debt is increased
         totalDebt = totalDebt.add( value ); 
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ).add(fee),
+            payout: bondInfo[ _depositer ].payout.add( payout ),
             vesting: terms.vestingTerm,
             lastTimestamp: block.timestamp,
             pricePaid: priceInUSD
@@ -317,7 +314,7 @@ contract BondContract is Initializable {
     ///@return price_ price in usd (in principle decimals)
     function bondPriceInUSD() public view returns ( uint price_ ) {
         if( isLiquidityBond ) {
-            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).markdown( address(principle) ) ).div(1e18);
+            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).getRawPrice( ) ).div(1e18);
         } else {
             price_ = bondPrice() .mul( 10 ** principle.decimals() ) .div(1e18);
         }
@@ -325,8 +322,8 @@ contract BondContract is Initializable {
 
     ///@return price_ price interms of principle token (18 decimals)
     function bondPrice() public view returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
-
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e5);
+        
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;
         }
@@ -334,12 +331,10 @@ contract BondContract is Initializable {
     }
 
     function _bondPrice() internal returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e11);
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
-        } else if ( terms.minimumPrice != 0 ) {
-            terms.minimumPrice = 0;
         }
     }
         
@@ -383,41 +378,7 @@ contract BondContract is Initializable {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
 
-    function setStaking(address _staking) external onlyAdmin {
-        Staking = _staking;        
-    }
-
-    function trustedForwarder() public view returns (address){
-        return _trustedForwarder;
-    }
-
-    function setTrustedForwarder(address _forwarder) external onlyAdmin {
-        _trustedForwarder = _forwarder;
-    }
-
-    function isTrustedForwarder(address forwarder) public view returns(bool) {
-        return forwarder == _trustedForwarder;
-    }
-
-    /**
-     * return the sender of this call.
-     * if the call came through our trusted forwarder, return the original sender.
-     * otherwise, return `msg.sender`.
-     * should be used in the contract anywhere instead of msg.sender
-     */
-    function _msgSender() internal view returns (address ret) {
-        if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
-            // At this point we know that the sender is a trusted forwarder,
-            // so we trust that the last bytes of msg.data are the verified sender address.
-            // extract sender address from the end of msg.data
-            assembly {
-                ret := shr(96,calldataload(sub(calldatasize(),20)))
-            }
-        } else {
-            ret = msg.sender;
-        }
-    }
-    function versionRecipient() external view returns (string memory) {
-        return "1";
+    function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
+        terms.minimumPrice = _minimumPrice;
     }
 }

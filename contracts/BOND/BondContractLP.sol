@@ -337,11 +337,9 @@ contract BondContractLP is Initializable {
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
-        } else if ( terms.minimumPrice != 0 ) {
-            terms.minimumPrice = 0;
         }
     }
-        
+
     ///@param _value Value in USD (18 decimals)
     ///@return Returns quantity of D33D for the value
     function payoutFor( uint _value ) public view returns ( uint ) {
@@ -382,6 +380,7 @@ contract BondContractLP is Initializable {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
 
+
     function trustedForwarder() public view returns (address){
         return _trustedForwarder;
     }
@@ -414,5 +413,9 @@ contract BondContractLP is Initializable {
     }
     function versionRecipient() external view returns (string memory) {
         return "1";
+
+    function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
+        terms.minimumPrice = _minimumPrice;
+
     }
 }

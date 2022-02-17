@@ -35,7 +35,7 @@ interface Ioracle {
     function requestPriceUpdate() external;
 }
 
-contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
+contract BondNFT is Initializable, IERC721ReceiverUpgradeable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using FixedPoint for *;
@@ -381,8 +381,6 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
-        } else if ( terms.minimumPrice != 0 ) {
-            terms.minimumPrice = 0;
         }
     }
         
@@ -435,6 +433,7 @@ contract NFTBond is Initializable, IERC721ReceiverUpgradeable {
         return IERC721ReceiverUpgradeable.onERC721Received.selector;
     }
 
+
 function trustedForwarder() public view returns (address){
         return _trustedForwarder;
     }
@@ -469,4 +468,9 @@ function trustedForwarder() public view returns (address){
         return "1";
     }
     
+
+    function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
+        terms.minimumPrice = _minimumPrice;
+    }
+
 }
