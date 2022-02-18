@@ -80,7 +80,10 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     address public DAO;
 
-    function initialize(address owner_) external initializer {
+    address private _trustedForwarder;
+
+    function initialize(address owner_, address _trustedForwarderAddress) external initializer {
+        _trustedForwarder = _trustedForwarderAddress;
         __Ownable_init();
         transferOwnership(owner_); //transfer ownership from proxyAdmin contract to deployer
     }
@@ -113,7 +116,7 @@ contract Staking is Initializable, OwnableUpgradeable {
     ///@notice Function to  deposit D33D. stakingToken will not be trensferred in this function.
     function stake(uint _amount, address _receiver) external returns (bool) {
         rebase();
-        D33D.safeTransferFrom(msg.sender, address(this), _amount);
+        D33D.safeTransferFrom(_msgSender(), address(this), _amount);
 
         UserInfo memory info = userInfo[ _receiver ];
         // require( !info.lock, "Deposits for account are locked" );
@@ -137,17 +140,18 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     ///@notice Claims only the expired deposits
     function safeClaim() public {
-        uint totalDeposits = ids[msg.sender].length;
+        address _sender = _msgSender();
+        uint totalDeposits = ids[_sender].length;
         require(totalDeposits > 0, "No previous deposits");
 
-        uint _lastWithdrawnSlot = lastWithdrawnSlot[msg.sender];
+        uint _lastWithdrawnSlot = lastWithdrawnSlot[_sender];
 
         uint _currentSlot;
         //totalDeposits is length of array, so greater than 1 == more than 1 deposit (else block)
         //set current slot to 0 if there is only one deposit
         //else set current slot to next available slot 
         if(totalDeposits == 1) {
-            Claim memory info = ids[msg.sender][_currentSlot];
+            Claim memory info = ids[_sender][_currentSlot];
             require(info.deposit > 0, "No New deposits"); //slot 0 is already withdrawn if info.deposit is 0
             //currentSlot is 0
         } else {
@@ -163,56 +167,57 @@ contract Staking is Initializable, OwnableUpgradeable {
         : totalDeposits; //if less than 10 new deposits, check upto totalDeposits(i.e totalDeposits -1 th slot)
         
         for(; _currentSlot < targetSlot; _currentSlot++) {
-            Claim memory info = ids[msg.sender][_currentSlot];
+            Claim memory info = ids[_sender][_currentSlot];
             
             if(epoch.timestamp >= info.expiry && info.expiry != 0) {
                 _amount += stakingToken.balanceForGons(info.gons);
                 _depositedAmt += info.deposit;
-                delete ids[msg.sender][_currentSlot]; //gas refund
+                delete ids[_sender][_currentSlot]; //gas refund
             } else {
                 //withdrawn upto previous loop's slot
                 //This block is reached only once
 
                 //if no deposits _currentSlot is 0, set lastWithdrawnSlot = 0 else set previous slot
-                lastWithdrawnSlot[msg.sender] = _currentSlot == 0 ? 0 : _currentSlot -1;
+                lastWithdrawnSlot[_sender] = _currentSlot == 0 ? 0 : _currentSlot -1;
                 _currentSlot = targetSlot; //exit loop
             }
 
         }
 
         if(_amount > 0) {
-            UserInfo memory _userInfo = userInfo[ msg.sender ];
+            UserInfo memory _userInfo = userInfo[ _sender ];
             
-            userInfo[ msg.sender ] = UserInfo ({
+            userInfo[ _sender ] = UserInfo ({
                 deposit: _userInfo.deposit - _depositedAmt ,
                 gons: _userInfo.gons - stakingToken.gonsForBalance( _userInfo.deposit - _depositedAmt )
             });
             
             stakingWarmUp.retrieve(address(this), _amount);
-            _wrap(_amount, msg.sender);
+            _wrap(_amount, _sender);
 
         }
     }
 
     function forceClaim() public {
+        address _sender = _msgSender();
         require(isLockup == false, "Cannot withdraw during lockup period"); //true for lockedStaking
 
-        uint totalDeposits = ids[msg.sender].length;
+        uint totalDeposits = ids[_sender].length;
         require(totalDeposits > 0, "No previous deposits");
 
-        uint _lastWithdrawnSlot = lastWithdrawnSlot[msg.sender];
+        uint _lastWithdrawnSlot = lastWithdrawnSlot[_sender];
         uint _currentSlot;
         //totalDeposits is length of array, so greater than 1 == more than 1 deposit (else block)
         //set current slot to 0 if there is only one deposit
         //else set current slot to next available slot 
         if(totalDeposits == 1) {
-            Claim memory info = ids[msg.sender][_currentSlot];
+            Claim memory info = ids[_sender][_currentSlot];
             require(info.deposit > 0, "No New deposits"); //slot 0 is already withdrawn if info.deposit is 0
             //currentSlot is 0
         } else {
             require(_lastWithdrawnSlot < totalDeposits - 1, "No New Deposits");
 
-            if(_lastWithdrawnSlot == 0 && ids[msg.sender][0].deposit > 0) {
+            if(_lastWithdrawnSlot == 0 && ids[_sender][0].deposit > 0) {
                 //slot 0 is not withdrawn yet
                 _currentSlot = 0;
             } else {
@@ -230,7 +235,7 @@ contract Staking is Initializable, OwnableUpgradeable {
             : totalDeposits; //if less than 10 new deposits, check upto totalDeposits(i.e totalDeposits -1 th slot)
                 
         for(; _currentSlot < targetSlot; _currentSlot++) {
-            Claim memory info = ids[msg.sender][_currentSlot];
+            Claim memory info = ids[_sender][_currentSlot];
 
 
             uint _amtCurrSlot = stakingToken.balanceForGons(info.gons);
@@ -243,10 +248,10 @@ contract Staking is Initializable, OwnableUpgradeable {
                 _penalty += _calculatePenalty(_rewardCurrSlot, info.expiry);
             }
             
-            delete ids[msg.sender][_currentSlot]; //gas refund
+            delete ids[_sender][_currentSlot]; //gas refund
         }
 
-        lastWithdrawnSlot[msg.sender] = targetSlot -1; //targetSlot is length so subtracting 1
+        lastWithdrawnSlot[_sender] = targetSlot -1; //targetSlot is length so subtracting 1
 
         uint amtToWithdraw;
         
@@ -259,23 +264,25 @@ contract Staking is Initializable, OwnableUpgradeable {
             amtToWithdraw = _amount;
         }
 
-        UserInfo memory _userInfo = userInfo[ msg.sender ];
+        UserInfo memory _userInfo = userInfo[ _sender ];
             
-        userInfo[ msg.sender ] = UserInfo ({
+        userInfo[ _sender ] = UserInfo ({
             deposit: _userInfo.deposit - _depositedAmt ,
             gons: _userInfo.gons - stakingToken.gonsForBalance( _userInfo.deposit - _depositedAmt )
         });
 
-        _wrap(amtToWithdraw, msg.sender);
+        _wrap(amtToWithdraw, _sender);
     }
 
     function unStake(uint _amount, bool _trigger) external {
         if(_trigger == true) {
             rebase();
         }
+
+        address _sender = _msgSender();
         
-        uint _amt = _unWrap(_amount);
-        D33D.safeTransfer( msg.sender, _amt );
+        uint _amt = _unWrap(_amount, _sender);
+        D33D.safeTransfer( _sender, _amt );
     }
 
     ///@return gBalance_ _amount equivalent gD33D 
@@ -287,8 +294,8 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     ///@param _amount number of gD33D to upwrap to sD33D
     ///@return sBalance _amount equivalent sD33D 
-    function _unWrap(uint _amount) internal returns(uint sBalance) {
-        gD33D.burn(msg.sender, _amount);
+    function _unWrap(uint _amount, address _user) internal returns(uint sBalance) {
+        gD33D.burn(_user, _amount);
         sBalance = gD33D.balanceFrom(_amount);
 
         //transfer out sD33D or D33D after this function
@@ -454,6 +461,40 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     function index() public view returns ( uint ) {
         return stakingToken.index();
+    }
+
+    function trustedForwarder() public view returns (address){
+        return _trustedForwarder;
+    }
+
+    function setTrustedForwarder(address _forwarder) external onlyOwner {
+        _trustedForwarder = _forwarder;
+    }
+
+    function isTrustedForwarder(address forwarder) public view returns(bool) {
+        return forwarder == _trustedForwarder;
+    }
+
+    /**
+     * return the sender of this call.
+     * if the call came through our trusted forwarder, return the original sender.
+     * otherwise, return `msg.sender`.
+     * should be used in the contract anywhere instead of msg.sender
+     */
+    function _msgSender() internal override view returns (address ret) {
+        if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+            // At this point we know that the sender is a trusted forwarder,
+            // so we trust that the last bytes of msg.data are the verified sender address.
+            // extract sender address from the end of msg.data
+            assembly {
+                ret := shr(96,calldataload(sub(calldatasize(),20)))
+            }
+        } else {
+            ret = msg.sender;
+        }
+    }
+    function versionRecipient() external view returns (string memory) {
+        return "1";
     }
 
 

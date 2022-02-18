@@ -413,7 +413,8 @@ contract BondContractLP is Initializable {
     }
     function versionRecipient() external view returns (string memory) {
         return "1";
-
+    }
+    
     function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
         terms.minimumPrice = _minimumPrice;
 
