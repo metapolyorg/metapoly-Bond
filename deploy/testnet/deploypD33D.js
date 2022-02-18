@@ -17,7 +17,7 @@ module.exports = async () => {
 
     let PD33DRedeemer = await ethers.getContractFactory("pD33DRedeemer", deployer)
     
-    let pD33DRedeemer = await upgrades.deployProxy(PD33DRedeemer, [addresses.d33d, pD33D.address, signer])
+    let pD33DRedeemer = await upgrades.deployProxy(PD33DRedeemer, [addresses.d33d, pD33D.address, signer, addresses.biconomy.forwarder])
 
     await pD33DRedeemer.deployed()
 

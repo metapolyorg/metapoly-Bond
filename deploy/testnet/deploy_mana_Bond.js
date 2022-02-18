@@ -3,6 +3,7 @@ const {testnet: addresses} = require("../../addresses/d33d")
 module.exports = async () => {
 
     const [deployer] = await ethers.getSigners();
+    const { deploy } = deployments
 
     let BondingCalculator = await ethers.getContractFactory("BondingCalculatorMANA", deployer)
 
@@ -16,7 +17,7 @@ module.exports = async () => {
     let BondContract = await ethers.getContractFactory("BondContractLP", deployer)
 
     let bondContract = await upgrades.deployProxy(BondContract, [addresses.d33d, addresses.tokens.mana, addresses.treasury, 
-        bondingCalculator.address, addresses.stakingFlexible, deployer.address, deployer.address])
+        bondingCalculator.address, addresses.stakingFlexible, deployer.address, deployer.address, addresses.biconomy.forwarder])
 
     await bondContract.deployed()
 
