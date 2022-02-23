@@ -159,8 +159,12 @@ contract BondContractETH is Initializable {
         // profits are calculated
         uint fee = payout .mul(terms.fee).div(10000);
 
-        principle.deposit{value: msg.value}();
-        require(_amount == principle.balanceOf(address(this)), "Incorrect _amount");
+        if(msg.value == 0) { //use WETH if msg.value is zero
+            principle.safeTransferFrom(_depositer, address(this), _amount);
+        } else {
+            principle.deposit{value: msg.value}();
+            require(_amount == principle.balanceOf(address(this)), "Incorrect _amount");
+        }
         ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
 
         if(fee > 0) {
