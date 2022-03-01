@@ -255,7 +255,6 @@ contract Staking is Initializable, OwnableUpgradeable {
 
         uint amtToWithdraw;
         
-        stakingWarmUp.retrieve(address(this), _amount);
 
         if(_penalty > 0) {
             amtToWithdraw = _amount - _penalty;
@@ -295,13 +294,20 @@ contract Staking is Initializable, OwnableUpgradeable {
     ///@param _amount number of gD33D to upwrap to sD33D
     ///@return sBalance _amount equivalent sD33D 
     function _unWrap(uint _amount, address _user) internal returns(uint sBalance) {
-        gD33D.burn(_user, _amount);
+
         sBalance = gD33D.balanceFrom(_amount);
+        stakingWarmUp.retrieve(address(this), sBalance);
+        gD33D.burn(_user, _amount);
 
         //transfer out sD33D or D33D after this function
     }
 
     function _calculatePenalty(uint _reward, uint _expiry) public view returns (uint) {
+
+        if(_expiry < epoch.timestamp) { //locking period is over
+            return 0; 
+        }
+
         uint diff = _expiry - epoch.timestamp; //lock time remaining
 
         if(diff >= penaltyInfo[0].interval) { //max Interval (max fee).
