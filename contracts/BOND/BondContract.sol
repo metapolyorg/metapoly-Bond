@@ -77,6 +77,7 @@ contract BondContract is Initializable {
     }
 
     enum PARAMETER { VESTING, PAYOUT, FEE, DEBT }
+    address private _trustedForwarder;
 
     event BondCreated( uint deposit, uint indexed payout, uint indexed expires, uint indexed priceInUSD );
     event BondRedeemed( address indexed recipient, uint payout, uint remaining );
@@ -88,7 +89,7 @@ contract BondContract is Initializable {
         _;
     }
     function initialize(address _D33D, address _principle, address _treasury, address _bondCalculator, 
-        address _staking, address _DAO, address _admin) external initializer {
+        address _staking, address _DAO, address _admin, address _trustedForwarderAddress) external initializer {
         D33D = IERC20Upgradeable(_D33D); 
         principle  = IPrinciple(_principle);
         treasury = _treasury;
@@ -96,6 +97,7 @@ contract BondContract is Initializable {
         Staking = _staking;
         DAO = _DAO;
         admin = _admin;
+        _trustedForwarder = _trustedForwarderAddress;
 
         isLiquidityBond = _bondCalculator != address(0);
         principle.safeApprove(_treasury, type(uint).max);
@@ -162,7 +164,7 @@ contract BondContract is Initializable {
             profit = value.sub(payoutInUSD).sub(feeInUSD);
         }
 
-        principle.safeTransferFrom(msg.sender, address(this), _amount);
+        principle.safeTransferFrom(_msgSender(), address(this), _amount);
         ITreasury( treasury ).deposit( _amount, address(principle), profit ); 
         
         // total debt is increased
@@ -379,6 +381,44 @@ contract BondContract is Initializable {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
 
+
+    function setStaking(address _staking) external onlyAdmin {
+        Staking = _staking;        
+    }
+
+    function trustedForwarder() public view returns (address){
+        return _trustedForwarder;
+    }
+
+    function setTrustedForwarder(address _forwarder) external onlyAdmin {
+        _trustedForwarder = _forwarder;
+    }
+
+    function isTrustedForwarder(address forwarder) public view returns(bool) {
+        return forwarder == _trustedForwarder;
+    }
+
+    /**
+     * return the sender of this call.
+     * if the call came through our trusted forwarder, return the original sender.
+     * otherwise, return `msg.sender`.
+     * should be used in the contract anywhere instead of msg.sender
+     */
+    function _msgSender() internal view returns (address ret) {
+        if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+            // At this point we know that the sender is a trusted forwarder,
+            // so we trust that the last bytes of msg.data are the verified sender address.
+            // extract sender address from the end of msg.data
+            assembly {
+                ret := shr(96,calldataload(sub(calldatasize(),20)))
+            }
+        } else {
+            ret = msg.sender;
+        }
+    }
+    function versionRecipient() external view returns (string memory) {
+        return "1";
+    }
     function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
         terms.minimumPrice = _minimumPrice;
     }

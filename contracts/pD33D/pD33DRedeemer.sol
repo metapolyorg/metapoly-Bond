@@ -35,11 +35,14 @@ contract pD33DRedeemer is Initializable, OwnableUpgradeable {
     }
 
     mapping( address => Term ) public terms;
+
+    address private _trustedForwarder;
     
-    function initialize(IERC20 _D33D, IERC20 _pD33D, address _signer) external initializer {
+    function initialize(IERC20 _D33D, IERC20 _pD33D, address _signer, address _trustedForwarderAddress) external initializer {
         D33D = _D33D;
         pD33D = _pD33D;
         signer = _signer;
+        _trustedForwarder = _trustedForwarderAddress;
 
         __Ownable_init();
     }
@@ -56,31 +59,32 @@ contract pD33DRedeemer is Initializable, OwnableUpgradeable {
 
     /// @param _amount Aount of D33D to redeem (1 pD33D = 1 D33D)
     function redeem( uint _amount, bytes calldata _signature, bool _stake ) external {
+        address _sender = _msgSender();
         if (_signature.length == 0) { // No signature, whitelisted in contract
-            Term memory info = terms[ msg.sender ];
+            Term memory info = terms[ _sender ];
             require(info.percent != 0, "Not whitelisted");
             require( redeemable( info ) >= _amount, 'Not enough vested' );
             require( info.max -  info.claimed >= _amount, 'Claimed over max' );
 
-            terms[ msg.sender ].claimed = info.claimed +  _amount;
+            terms[ _sender ].claimed = info.claimed +  _amount;
         } else {
-            require(terms[msg.sender].percent == 0, "On-chain whitelisted");
-            bytes32 message = keccak256(abi.encodePacked(msg.sender));
+            require(terms[_sender].percent == 0, "On-chain whitelisted");
+            bytes32 message = keccak256(abi.encodePacked(_sender));
             bytes32 messageHash = ECDSAUpgradeable.toEthSignedMessageHash(message);
             address recoveredAddr = ECDSAUpgradeable.recover(messageHash, _signature);
             require(recoveredAddr == signer, "Invalid signature");
         }
 
         uint USDCAmt = (_amount * treasury.d33dPrice() / 1e30);
-        USDC.transferFrom( msg.sender, address( this ), USDCAmt );
-        pD33D.burnFrom( msg.sender, _amount );
+        USDC.transferFrom( _sender, address( this ), USDCAmt );
+        pD33D.burnFrom( _sender, _amount );
         
         uint D33DAmt = treasury.deposit( USDCAmt, address(USDC), 0);
 
         if (_stake) {
-            stakingContract.stake(D33DAmt, msg.sender);
+            stakingContract.stake(D33DAmt, _sender);
         } else {
-            D33D.transfer( msg.sender, D33DAmt );
+            D33D.transfer( _sender, D33DAmt );
         }
     }
 
@@ -122,5 +126,39 @@ contract pD33DRedeemer is Initializable, OwnableUpgradeable {
     function isContractWhitelisted(address _account) external view returns (bool) {
         if (terms[ _account ].percent != 0) return true;
         else return false;
+    }
+
+    function trustedForwarder() public view returns (address){
+        return _trustedForwarder;
+    }
+
+    function setTrustedForwarder(address _forwarder) external onlyOwner {
+        _trustedForwarder = _forwarder;
+    }
+
+    function isTrustedForwarder(address forwarder) public view returns(bool) {
+        return forwarder == _trustedForwarder;
+    }
+
+    /**
+     * return the sender of this call.
+     * if the call came through our trusted forwarder, return the original sender.
+     * otherwise, return `msg.sender`.
+     * should be used in the contract anywhere instead of msg.sender
+     */
+    function _msgSender() internal override view returns (address ret) {
+        if (msg.data.length >= 20 && isTrustedForwarder(msg.sender)) {
+            // At this point we know that the sender is a trusted forwarder,
+            // so we trust that the last bytes of msg.data are the verified sender address.
+            // extract sender address from the end of msg.data
+            assembly {
+                ret := shr(96,calldataload(sub(calldatasize(),20)))
+            }
+        } else {
+            ret = msg.sender;
+        }
+    }
+    function versionRecipient() external view returns (string memory) {
+        return "1";
     }
 }

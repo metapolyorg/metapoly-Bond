@@ -7,7 +7,7 @@ module.exports = async () => {
     let Distributor = await ethers.getContractFactory("Distributor", deployer)
 
     //end of first epoch time
-    let distributor = await upgrades.deployProxy(Distributor, [addresses.d33d, addresses.treasury, "28800", "1639872000", deployer.address])
+    let distributor = await upgrades.deployProxy(Distributor, [addresses.d33d, addresses.treasury, "28800", "1643155203", deployer.address])
 
     await distributor.deployed()
 

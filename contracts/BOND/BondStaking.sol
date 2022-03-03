@@ -13,23 +13,21 @@ interface IPrinciple is IERC20Upgradeable {
 
 interface IStaking {
     function stake(uint _amount, address _receiver) external returns (bool) ;
+    function bondStake(uint _amount, address _receiver) external returns (bool);
 }
 
 interface ITreasury {
     function deposit(uint amount, address principle, uint profit) external ;
-    function depositBond(uint amount, address principle, uint payout) external ;
-    
     function valueOf( address _token, uint _amount ) external view returns ( uint value_ );
+    function d33dPrice() external view returns (uint);
 }
 
 interface IBondCalculator {
     function valuation( address _LP, uint _amount ) external view returns ( uint );
     function markdown( address _LP ) external view returns ( uint );
-
-    function getRawPrice() external view returns (uint);
 }
 
-contract BondD33DUSDCLP is Initializable {
+contract BondStaking is Initializable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using SafeERC20Upgradeable for IPrinciple;
@@ -126,6 +124,7 @@ contract BondD33DUSDCLP is Initializable {
             maxDebt: _maxDebt
         });
         totalDebt = _initialDebt;
+        // lastDecay = block.number; //changed
         lastDecay = block.timestamp; 
 
     }
@@ -135,9 +134,9 @@ contract BondD33DUSDCLP is Initializable {
         and D33D is minted. The minted D33D is vested for a specific time.
         @param _amount quantity of principle token to deposit
         @param _maxPrice Used for slippage handling. Price in terms of principle token.
-        @param _depositer address of User to receive bond D33D
+        @param _depositer address of User to receive bond d33d
      */
-    function deposit(uint _amount, uint _maxPrice, address _depositer) external returns (uint){
+    function deposit(uint _amount, uint _maxPrice, address _depositer, bool _stake) external returns (uint){
         require(_amount > 0, "Invalid amount");
         require(_depositer != address(0), "Invalid address");
 
@@ -158,24 +157,35 @@ contract BondD33DUSDCLP is Initializable {
         }
         // profits are calculated
         uint fee = payout .mul(terms.fee).div(10000);
+        uint profit;
+        {
+            uint d33dInUSD = ITreasury(treasury).d33dPrice();
+            uint payoutInUSD = payout.mul(d33dInUSD).div(1e18); //18 decimals
+            uint feeInUSD = fee.mul(d33dInUSD).div(1e18);
+            profit = value.sub(payoutInUSD).sub(feeInUSD);
+        }
 
         principle.safeTransferFrom(_msgSender(), address(this), _amount);
-        ITreasury( treasury ).depositBond( _amount, address(principle), payout.add(fee) ); 
-
-        if(fee > 0) {
-            D33D.safeTransfer(DAO, fee);
-        }
+        ITreasury( treasury ).deposit( _amount, address(principle), profit ); 
         
         // total debt is increased
         totalDebt = totalDebt.add( value ); 
                 
-        // depositor info is stored
-        bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ),
-            vesting: terms.vestingTerm,
-            lastTimestamp: block.timestamp,
-            pricePaid: priceInUSD
-        });
+        if(_stake) {
+            address _user = _depositer; //stack too deep
+            D33D.approve( Staking, _amount );
+            IStaking( Staking ).bondStake( _amount, _user );
+        } else {
+            address _user = _depositer;//stack too deep
+            // depositor info is stored
+            bondInfo[ _depositer ] = Bond({ 
+                payout: bondInfo[ _user ].payout.add( payout ).add(fee),
+                vesting: terms.vestingTerm,
+                lastTimestamp: block.timestamp,
+                pricePaid: priceInUSD
+            });
+        }
+
 
         // indexed events are emitted
         emit BondCreated( _amount, payout, block.number.add( terms.vestingTerm ), priceInUSD );
@@ -316,7 +326,7 @@ contract BondD33DUSDCLP is Initializable {
     ///@return price_ price in usd (in principle decimals)
     function bondPriceInUSD() public view returns ( uint price_ ) {
         if( isLiquidityBond ) {
-            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).getRawPrice( ) ).div(1e18);
+            price_ = bondPrice().mul( IBondCalculator( BondCalculator ).markdown( address(principle) ) ).div(1e18);
         } else {
             price_ = bondPrice() .mul( 10 ** principle.decimals() ) .div(1e18);
         }
@@ -324,8 +334,8 @@ contract BondD33DUSDCLP is Initializable {
 
     ///@return price_ price interms of principle token (18 decimals)
     function bondPrice() public view returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e5);
-        
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
+
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;
         }
@@ -333,7 +343,7 @@ contract BondD33DUSDCLP is Initializable {
     }
 
     function _bondPrice() internal returns ( uint price_ ) {        
-        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e11);
+        price_ = terms.controlVariable.mul( debtRatio() ).div( 1e6 ).add(1e17);
 
         if ( price_ < terms.minimumPrice ) {
             price_ = terms.minimumPrice;        
@@ -380,6 +390,11 @@ contract BondD33DUSDCLP is Initializable {
         return D33D.totalSupply().mul( terms.maxPayout ).div( 100000 );
     }
 
+
+    function setStaking(address _staking) external onlyAdmin {
+        Staking = _staking;        
+    }
+
     function trustedForwarder() public view returns (address){
         return _trustedForwarder;
     }
@@ -413,7 +428,6 @@ contract BondD33DUSDCLP is Initializable {
     function versionRecipient() external view returns (string memory) {
         return "1";
     }
-
     function setMinimumPrice(uint _minimumPrice) external onlyAdmin {
         terms.minimumPrice = _minimumPrice;
     }

@@ -11,7 +11,7 @@ interface IERC20 is IERC20Upgradeable {
     function burn(uint _shares) external;
 }
 
-contract DvDRedeemer is Initializable, OwnableUpgradeable {
+contract DvDRedeemerTestnet is Initializable, OwnableUpgradeable {
     using SafeERC20Upgradeable for IERC20;
 
     uint pD33DClaimed;
@@ -35,7 +35,7 @@ contract DvDRedeemer is Initializable, OwnableUpgradeable {
     IERC20 public DVD;
     IERC20 public VIPDVD;
     IERC20 public pD33D;
-
+    
     address private _trustedForwarder;
 
     function initialize(IERC20 _dvd, IERC20 _vipDvd, IERC20 _pd33d,
@@ -89,11 +89,11 @@ contract DvDRedeemer is Initializable, OwnableUpgradeable {
         pD33DClaimed += pD33dAmt;
 
         VIPDVD.safeTransferFrom(_sender, address(this), _vipDVDAmount);
-        VIPDVD.withdraw(_vipDVDAmount);
+        // VIPDVD.withdraw(_vipDVDAmount);
 
-        uint _dvdAmount = DVD.balanceOf(address(this));
+        // uint _dvdAmount = DVD.balanceOf(address(this));
 
-        DVD.burn(_dvdAmount);
+        VIPDVD.burn(_vipDVDAmount);
 
         pD33D.safeTransfer(_sender, pD33dAmt);
     }
@@ -180,6 +180,7 @@ contract DvDRedeemer is Initializable, OwnableUpgradeable {
     function withdrawPD33D(address _to, uint _amt) external onlyOwner {
         pD33D.safeTransfer(_to, _amt);
     }
+
     function trustedForwarder() public view returns (address){
         return _trustedForwarder;
     }
