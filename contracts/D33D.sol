@@ -151,12 +151,12 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         if(feeOn && (isDex[sender] || isDex[recipient]) && !(isExcluded[sender] || isExcluded[recipient])) {
             uint _treasuryTax = amount * taxPerc / 10000;
+            require(_treasuryTax > 0, "Not allow zero tax");
 
             //sell : user -> dex
             //user pays {amount} d33d out of which {taxPerc} percentage is tranferred to treasury
             //remaining to dex
             if(isSellTaxed && isDex[recipient]) {
-                require(_treasuryTax > 0, "Not allow zero tax");
                 _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax ;
             }
@@ -164,7 +164,6 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
             //buy : dex -> user
             //user receives less d33d
             if(isBuyTaxed && isDex[sender]) {
-                require(_treasuryTax > 0, "Not allow zero tax");
                 _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax;
             }
