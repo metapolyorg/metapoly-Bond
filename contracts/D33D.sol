@@ -20,7 +20,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
     bool public isSellTaxed; 
     bool public isBuyTaxed;
-    bool public unlocked;
+    bool public locked;
     address public taxReceiver;
 
     uint256 private _cap;
@@ -43,6 +43,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         taxReceiver = treasury;
         _cap = cap_;
+        locked = true;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
@@ -51,6 +52,8 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     }
 
     function setTaxPerc(uint _taxPerc) external onlyOwner {
+        require(_taxPerc <= 2000, "Not allow over 20%");
+
         taxPerc = _taxPerc;
         emit TaxPercUpdated(_taxPerc);
     }
@@ -79,7 +82,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     }
 
     function unlock() external onlyOwner {
-        unlocked = true;
+        locked = false;
     }
 
     function balanceOf(address account) public view override returns (uint256) {
@@ -139,7 +142,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _beforeTokenTransfer(sender, recipient, amount);
 
         //antiSnipe bot
-        if(unlocked == false) {
+        if(lock == true) {
             require(sender == owner(), "locked" );
         }
         
@@ -153,6 +156,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
             //user pays {amount} d33d out of which {taxPerc} percentage is tranferred to treasury
             //remaining to dex
             if(isSellTaxed && isDex[recipient]) {
+                require(_treasuryTax > 0, "Not allow zero tax");
                 _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax ;
             }
@@ -160,6 +164,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
             //buy : dex -> user
             //user receives less d33d
             if(isBuyTaxed && isDex[sender]) {
+                require(_treasuryTax > 0, "Not allow zero tax");
                 _amountReceiver = _amountReceiver - _treasuryTax;
                 _totalTax = _totalTax + _treasuryTax;
             }
