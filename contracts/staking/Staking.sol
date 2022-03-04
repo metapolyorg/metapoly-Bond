@@ -27,27 +27,33 @@ interface IUSMMinter {
     function mintWithD33d(uint _d33dAmount, address _to) external returns(uint _usmAmount);
 }
 
+interface IVD33D is IERC20Upgradeable {
+    function mint(address to, uint amount) external;
+    function burn(uint amount) external;
+}
+
 contract Staking is Initializable, OwnableUpgradeable {
 
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using SafeERC20Upgradeable for IStakingToken;
+    using SafeERC20Upgradeable for IVD33D;
 
     IERC20Upgradeable public D33D;
     // IERC20Upgradeable public constant USM = "" //TODO uncomment;
     IStakingToken public stakingToken;
     IStakingWarmUp public stakingWarmUp;
     IUSMMinter public usmMinter;
+    IVD33D public vD33D;
 
     address public distributor;    
     address public _trustedForwarder;
-    uint public warmupPeriod;
 
 
     struct Claim {
         uint deposit;
         uint gons;
-        uint expiry;
-        bool lock; // prevents malicious delays
+        // uint expiry;
+        // bool lock; // prevents malicious delays
     }
     
     struct Epoch {
@@ -69,16 +75,16 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     function initialzeStaking(IERC20Upgradeable _D33D, IStakingToken _sD33D, address distributor_, address _stakingWarmUp, 
         uint _epochLength, uint _firstEpochNumber,
-        uint _firstEpochTimestamp, uint warmUpPeriod_, address _DAO, address _usmMinter) external onlyOwner {
+        uint _firstEpochTimestamp, address _DAO, address _usmMinter, address _vD33D) external onlyOwner {
 
         require(address(D33D) == address(0), "Already initalized");
 
         D33D = _D33D;
         stakingToken = _sD33D;
         distributor = distributor_;
-        warmupPeriod = warmUpPeriod_;
         DAO = _DAO;
         usmMinter = IUSMMinter(_usmMinter);
+        vD33D = IVD33D(_vD33D);
 
         epoch = Epoch({
             length: _epochLength,
@@ -103,38 +109,35 @@ contract Staking is Initializable, OwnableUpgradeable {
         D33D.safeTransferFrom(_sender, address(this), _amount);
 
         Claim memory info = warmupInfo[ _receiver ];
-        require( !info.lock, "Deposits for account are locked" );
 
         warmupInfo[ _receiver ] = Claim ({
             deposit: info.deposit +  _amount ,
-            gons: info.gons + stakingToken.gonsForBalance( _amount ),
-            expiry: epoch.timestamp +  warmupPeriod,
-            lock: false
+            gons: info.gons + stakingToken.gonsForBalance( _amount )
         });
 
         stakingToken.transfer(address(stakingWarmUp), _amount);
+        vD33D.mint(_sender, _amount);
         return true;
 
     }
 
     ///@dev Releases stakingToken after the minimum lockup period
-    function claim() public {
-        address _sender = _msgSender();
+    function claim(address _sender) internal returns (uint amount){
 
         Claim memory info = warmupInfo[_sender];
 
-        if ( epoch.timestamp >= info.expiry && info.expiry != 0) { 
-            delete warmupInfo[_sender];
-            uint amount = stakingToken.balanceForGons(info.gons);
-            
-            stakingWarmUp.retrieve(_sender, amount);
-        }
+        delete warmupInfo[_sender];
+        amount = stakingToken.balanceForGons(info.gons);
+        
+        stakingWarmUp.retrieve(address(this), amount);
+        
     }
 
     function claimRewards() external {
-        address _sender = _msgSender();
+        _claimRewards(_msgSender());
+    }
 
-
+    function _claimRewards(address _sender) internal {
         Claim memory info = warmupInfo[_sender];
         //difference in deposited amount and current sTOKEN amount are the rewards
         uint _amount = stakingToken.balanceForGons( info.gons );
@@ -142,19 +145,27 @@ contract Staking is Initializable, OwnableUpgradeable {
         stakingWarmUp.retrieve(address(this), rewards);
 
         warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit );
-        warmupInfo[_sender].expiry = epoch.timestamp +  warmupPeriod; //resets lockup period
 
         usmMinter.mintWithD33d(rewards, _sender);
     }
 
-    function unStake(uint _amount, bool _trigger) external {
+    ///@notice Returns all the staked d33d + USM rewards
+    /// #if_succeeds {:msg "Should not withdraw more/less than deposited"} old(warmupInfo[_msgSender()].deposit) == _d33dAmt;
+    function unStake(bool _trigger) external returns (uint _d33dAmt){
         address _sender = _msgSender();
         if(_trigger == true) {
             rebase();
         }
-    
-        stakingToken.safeTransferFrom( _sender, address(this), _amount );
-        D33D.safeTransfer( _sender, _amount );
+
+        _claimRewards(_sender); // user receives USM rewards
+
+        _d33dAmt = claim(_sender);
+        if(_d33dAmt > 0) {
+            vD33D.safeTransferFrom(_sender, address(this), _d33dAmt); //D33D and vD33D are 1:1
+            vD33D.burn(_d33dAmt);
+
+            D33D.safeTransfer( _sender, _d33dAmt );
+        }
     }
 
     function rebase() public {
@@ -179,14 +190,6 @@ contract Staking is Initializable, OwnableUpgradeable {
                 epoch.distribute = balance -  staked;
             }
         }
-    }
-
-    function setWarmupPeriod(uint _warmupPeriod) external onlyOwner {
-        warmupPeriod = _warmupPeriod;
-    }
-
-    function toggleDepositLock() external {
-        warmupInfo[ msg.sender ].lock = !warmupInfo[ msg.sender ].lock;
     }
 
 
