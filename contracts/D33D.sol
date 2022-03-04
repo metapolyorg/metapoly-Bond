@@ -142,7 +142,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _beforeTokenTransfer(sender, recipient, amount);
 
         //antiSnipe bot
-        if(lock == true) {
+        if(locked == true) {
             require(sender == owner(), "locked" );
         }
         
