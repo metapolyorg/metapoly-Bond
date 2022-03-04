@@ -20,7 +20,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
     bool public isSellTaxed; 
     bool public isBuyTaxed;
-    bool public unlocked;
+    bool public locked;
     address public taxReceiver;
 
     uint256 private _cap;
@@ -43,6 +43,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         taxReceiver = treasury;
         _cap = cap_;
+        locked = true;
     }
 
     function setTreasury(address treasury_) external onlyOwner {
@@ -51,6 +52,8 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     }
 
     function setTaxPerc(uint _taxPerc) external onlyOwner {
+        require(_taxPerc <= 2000, "Not allow over 20%");
+
         taxPerc = _taxPerc;
         emit TaxPercUpdated(_taxPerc);
     }
@@ -79,7 +82,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
     }
 
     function unlock() external onlyOwner {
-        unlocked = true;
+        locked = false;
     }
 
     function balanceOf(address account) public view override returns (uint256) {
@@ -139,7 +142,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
         _beforeTokenTransfer(sender, recipient, amount);
 
         //antiSnipe bot
-        if(unlocked == false) {
+        if(locked == true) {
             require(sender == owner(), "locked" );
         }
         
@@ -148,6 +151,7 @@ contract D33DImplementation is Initializable, ERC20BurnableUpgradeable, OwnableU
 
         if(feeOn && (isDex[sender] || isDex[recipient]) && !(isExcluded[sender] || isExcluded[recipient])) {
             uint _treasuryTax = amount * taxPerc / 10000;
+            require(_treasuryTax > 0, "Not allow zero tax");
 
             //sell : user -> dex
             //user pays {amount} d33d out of which {taxPerc} percentage is tranferred to treasury
