@@ -20,6 +20,8 @@ interface ID33D is IERC20Upgradeable{
 
 interface IToken is IERC20Upgradeable {
     function decimals() external view returns(uint8);
+    function mint(address to, uint amount) external;
+    function burn(uint amount) external;
 }
 
 interface INFTBond {
@@ -81,6 +83,8 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
     enum MANAGING { RESERVEDEPOSITOR, RESERVESPENDER, RESERVETOKEN, RESERVEMANAGER, LIQUIDITYDEPOSITOR, 
         LIQUIDITYTOKEN, LIQUIDITYMANAGER, REWARDMANAGER, NFTDEPOSITOR, SUPPORTEDNFT  }
 
+    address public bD33D;
+    
     event Deposit( address indexed token, uint amount, uint value );
     event DepositNFT( address indexed token, uint id, uint value );
     event Withdrawal( address indexed token, uint amount, uint value );
@@ -92,11 +96,12 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
 
     function initialize(address _d33d,         
         address _USDC,
-        address owner_, uint d33dPrice_) external initializer {
+        address owner_, uint d33dPrice_, address _bD33D) external initializer {
         __Ownable_init();
 
         d33dPrice = d33dPrice_;
         D33D = ID33D(_d33d);
+        bD33D = _bD33D;
 
         isReserveToken[ _USDC ] = true;
         reserveTokens.push( _USDC );
@@ -277,6 +282,8 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
     } 
 
     function _mint(address _user, uint _amount) internal {
+        IToken(bD33D).mint(address(this), _amount);
+        IToken(bD33D).burn(_amount);
         D33D.mint( _user, _amount );
     }
 
@@ -289,7 +296,8 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         return totalReserves - (D33D.totalSupply() * d33dPrice / 1e18);
     }
 
-    function editPermission(MANAGING _managing, address _address, bool _status) external onlyOwner returns (bool) {
+    //toggle() can be used instead of editPermission()
+    /* function editPermission(MANAGING _managing, address _address, bool _status) external onlyOwner returns (bool) {
         require( _address != address(0) );
         
         if ( _managing == MANAGING.RESERVEDEPOSITOR ) { // 0
@@ -313,7 +321,7 @@ contract Treasury is Initializable, OwnableUpgradeable, IERC721ReceiverUpgradeab
         } else if ( _managing == MANAGING.SUPPORTEDNFT ) { // 9
             isSupportedNFT[_address] = _status;
         } else return false;
-    }
+    } */
 
     function toggle( MANAGING _managing, address _address, address _calculator ) external onlyOwner returns ( bool ) {
         require( _address != address(0) );
