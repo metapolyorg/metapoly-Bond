@@ -66,9 +66,12 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     mapping( address => Claim ) public warmupInfo;
     address public DAO;
+    
+    uint USMClaimLimit;
 
-    function initialize(address owner_, address _trustedForwarderAddress) external initializer {
+    function initialize(address owner_, address _trustedForwarderAddress, uint _USMClaimLimit) external initializer {
         _trustedForwarder = _trustedForwarderAddress;
+        USMClaimLimit = _USMClaimLimit;
         __Ownable_init();
         transferOwnership(owner_); //transfer ownership from proxyAdmin contract to deployer
     }
@@ -142,9 +145,16 @@ contract Staking is Initializable, OwnableUpgradeable {
         //difference in deposited amount and current sTOKEN amount are the rewards
         uint _amount = stakingToken.balanceForGons( info.gons );
         uint rewards = _amount - info.deposit;
+        uint diff;
+
+        if(rewards > USMClaimLimit) {
+            diff = rewards - USMClaimLimit;
+            rewards = rewards - diff;
+        }
+
         stakingWarmUp.retrieve(address(this), rewards);
 
-        warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit );
+        warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
 
         usmMinter.mintWithD33d(rewards, _sender);
     }
@@ -192,7 +202,9 @@ contract Staking is Initializable, OwnableUpgradeable {
         }
     }
 
-
+    function adjustRewardLimit(uint _limit) external onlyOwner {
+        USMClaimLimit = _limit;
+    }
     function index() public view returns ( uint ) {
         return stakingToken.index();
     }
