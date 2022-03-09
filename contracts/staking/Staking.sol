@@ -39,7 +39,7 @@ contract Staking is Initializable, OwnableUpgradeable {
     using SafeERC20Upgradeable for IVD33D;
 
     IERC20Upgradeable public D33D;
-    // IERC20Upgradeable public constant USM = "" //TODO uncomment;
+    IERC20Upgradeable public constant USM = ""; //TODO uncomment;
     IStakingToken public stakingToken;
     IStakingWarmUp public stakingWarmUp;
     IUSMMinter public usmMinter;
@@ -66,10 +66,10 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     mapping( address => Claim ) public warmupInfo;
     address public DAO;
-    
-    uint USMClaimLimit;
 
-    function initialize(address owner_, address _trustedForwarderAddress, uint _USMClaimLimit) external initializer {
+     uint USMClaimLimit;
+
+    function initialize(address owner_, address _trustedForwarderAddress,  uint _USMClaimLimit) external initializer {
         _trustedForwarder = _trustedForwarderAddress;
         USMClaimLimit = _USMClaimLimit;
         __Ownable_init();
@@ -105,6 +105,7 @@ contract Staking is Initializable, OwnableUpgradeable {
 
     ///@notice Function to  deposit D33D. stakingToken will not be trensferred in this function.
     function stake(uint _amount, address _receiver) external returns (bool) {
+        require(receiver != address(this), "Invalid receiver");
         address _sender = _msgSender();
 
         rebase();
@@ -118,6 +119,13 @@ contract Staking is Initializable, OwnableUpgradeable {
             gons: info.gons + stakingToken.gonsForBalance( _amount )
         });
 
+        //update global data
+        Claim memory globalInfo = warmupInfo[address(this)];
+        warmupInfo[address(this)] = Claim({
+            deposit: globalInfo.deposit + _amount,
+            gons: globalInfo.gons + stakingToken.gonsForBalance( _amount )
+        });
+
         stakingToken.transfer(address(stakingWarmUp), _amount);
         vD33D.mint(_sender, _amount);
         return true;
@@ -129,8 +137,16 @@ contract Staking is Initializable, OwnableUpgradeable {
 
         Claim memory info = warmupInfo[_sender];
 
-        delete warmupInfo[_sender];
         amount = stakingToken.balanceForGons(info.gons);
+
+        //update global data
+        Claim memory globalInfo = warmupInfo[address(this)];
+        warmupInfo[address(this)] = Claim({
+            deposit: globalInfo.deposit - info.deposit,
+            gons: globalInfo.gons - info.gons
+        });
+
+        delete warmupInfo[_sender];
         
         stakingWarmUp.retrieve(address(this), amount);
         
@@ -145,18 +161,25 @@ contract Staking is Initializable, OwnableUpgradeable {
         //difference in deposited amount and current sTOKEN amount are the rewards
         uint _amount = stakingToken.balanceForGons( info.gons );
         uint rewards = _amount - info.deposit;
-        uint diff;
-
-        if(rewards > USMClaimLimit) {
-            diff = rewards - USMClaimLimit;
-            rewards = rewards - diff;
+        uint diff;	
+        if(rewards > USMClaimLimit) {	
+            diff = rewards - USMClaimLimit;	
+            rewards = rewards - diff;	
         }
-
         stakingWarmUp.retrieve(address(this), rewards);
 
         warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
 
-        usmMinter.mintWithD33d(rewards, _sender);
+        //update global data
+        warmupInfo[address(this)].gons -= stakingToken.gonsForBalance(rewards);
+
+        // usmMinter.mintWithD33d(rewards, _sender);
+        uint usmRewards; //TODO calculate USM for "rewards" d33d
+        if(USM.balanceOf(address(this)) >= usmRewards ) {
+            USM.safeTransfer(_sender, usmRewards);
+        } else {
+            usmMinter.mintWithD33d(rewards, _sender);
+        }
     }
 
     ///@notice Returns all the staked d33d + USM rewards
@@ -187,6 +210,8 @@ contract Staking is Initializable, OwnableUpgradeable {
 
             epoch.number++;
 
+            _mintRewards();
+
             if ( distributor != address(0) ) {
                 IDistributor( distributor ).distribute();
             }
@@ -205,6 +230,27 @@ contract Staking is Initializable, OwnableUpgradeable {
     function adjustRewardLimit(uint _limit) external onlyOwner {
         USMClaimLimit = _limit;
     }
+    function _mintRewards() internal {
+        /**
+            get global deposits
+            get global gons
+            rewards = globalDeposits - gonsForBalance(globalGons)
+            get USM for reward d33d
+                if(balanceOf(this) < % of rewardUSM)
+                    mintWithD33D()
+         */
+
+        Claim memory globalInfo = warmupInfo[address(this)];
+        uint rewards = stakingToken.gonsForBalance(globalInfo.gons) - globalInfo.deposit;
+        uint usmRewards; //TODO calculate USM amt for the reward d33d
+
+        if(USM.balanceOf(address(this)) < (usmRewards / 2)){
+            uint _d33dAmount; //TODO calculate d33d required to mint 50% of the rewards
+            usmMinter.mintWithD33d(_d33dAmount, address(this));
+
+        }
+    }
+
     function index() public view returns ( uint ) {
         return stakingToken.index();
     }
