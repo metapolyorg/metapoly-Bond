@@ -25,6 +25,7 @@ interface IDistributor {
 
 interface IUSMMinter {
     function mintWithD33d(uint _d33dAmount, address _to) external returns(uint _usmAmount);
+    function getUsmAmountOut(address _token, uint _tokenAmount) view external returns(uint _usmAmount);
 }
 
 interface IVD33D is IERC20Upgradeable {
@@ -39,7 +40,7 @@ contract Staking is Initializable, OwnableUpgradeable {
     using SafeERC20Upgradeable for IVD33D;
 
     IERC20Upgradeable public D33D;
-    // IERC20Upgradeable public constant USM = "" //TODO uncomment;
+    IERC20Upgradeable public constant USM = IERC20Upgradeable(0x7E05DC0396b4Cfc764B2C9E891dfCD5CE8bF8312); //TODO add as param
     IStakingToken public stakingToken;
     IStakingWarmUp public stakingWarmUp;
     IUSMMinter public usmMinter;
@@ -131,7 +132,7 @@ contract Staking is Initializable, OwnableUpgradeable {
 
         delete warmupInfo[_sender];
         amount = stakingToken.balanceForGons(info.gons);
-        
+        // require(info.deposit == amount, "Pending unclaimed rewards");
         stakingWarmUp.retrieve(address(this), amount);
         
     }
@@ -145,18 +146,22 @@ contract Staking is Initializable, OwnableUpgradeable {
         //difference in deposited amount and current sTOKEN amount are the rewards
         uint _amount = stakingToken.balanceForGons( info.gons );
         uint rewards = _amount - info.deposit;
-        uint diff;
 
-        if(rewards > USMClaimLimit) {
-            diff = rewards - USMClaimLimit;
-            rewards = rewards - diff;
+        if(rewards > 0) {
+            uint diff;
+            uint maxD33d = USMClaimLimit * 1e18 / usmMinter.getUsmAmountOut(address(D33D), 1e18);
+
+            if(rewards > maxD33d) {
+                diff = rewards - maxD33d;
+                // rewards = rewards - diff;
+                rewards = maxD33d;
+            }
+
+            stakingWarmUp.retrieve(address(this), rewards);
+            warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
+
+            usmMinter.mintWithD33d(rewards, _sender);
         }
-
-        stakingWarmUp.retrieve(address(this), rewards);
-
-        warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
-
-        usmMinter.mintWithD33d(rewards, _sender);
     }
 
     ///@notice Returns all the staked d33d + USM rewards

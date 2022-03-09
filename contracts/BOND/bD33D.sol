@@ -7,13 +7,13 @@ contract bD33D is ERC20Upgradeable, OwnableUpgradeable {
     mapping(address => bool) public isAuthorised;
 
     modifier onlyAuthorised {
-        require(isAuthorised[msg.sender], "vD33D: Not Authorised");
+        require(isAuthorised[msg.sender], "bD33D: Not Authorised");
         _;
     }
 
     event AuthorisationUpdated(address indexed account, bool status);
 
-    function initalize(string memory _name, string memory _symbol, address _admin) external initializer {
+    function initialize(string memory _name, string memory _symbol, address _admin) external initializer {
         __ERC20_init(_name, _symbol);
 
         __Ownable_init();
