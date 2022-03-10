@@ -130,9 +130,16 @@ contract Staking is Initializable, OwnableUpgradeable {
 
         Claim memory info = warmupInfo[_sender];
 
-        delete warmupInfo[_sender];
-        amount = stakingToken.balanceForGons(info.gons);
-        // require(info.deposit == amount, "Pending unclaimed rewards");
+        //withdraw deposited D33d (don't withdraw rewards if any). Rewards should have been withdrawn 
+        //in previous step(_claimRewards). Any remaining rewards is still there because of USMRewardLimit
+        amount = stakingToken.balanceForGons(info.deposit);
+
+        warmupInfo[_sender] = Claim({
+            deposit: 0,
+            gons: info.gons - stakingToken.gonsForBalance(info.deposit) //subtract deposited amount equivalent gons. 
+            //Remaining if any is the rewards(rewards > usmRewardLimit).
+        });
+
         stakingWarmUp.retrieve(address(this), amount);
         
     }
