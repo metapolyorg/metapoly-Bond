@@ -2,12 +2,12 @@ pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
-contract bD33D is ERC20Upgradeable, OwnableUpgradeable {
+contract BondToken is ERC20Upgradeable, OwnableUpgradeable {
 
     mapping(address => bool) public isAuthorised;
 
     modifier onlyAuthorised {
-        require(isAuthorised[msg.sender], "bD33D: Not Authorised");
+        require(isAuthorised[msg.sender], "BondToken: Not Authorised");
         _;
     }
 
