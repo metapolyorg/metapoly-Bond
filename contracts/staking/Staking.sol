@@ -40,7 +40,7 @@ contract Staking is Initializable, OwnableUpgradeable {
     using SafeERC20Upgradeable for IVD33D;
 
     IERC20Upgradeable public D33D;
-    IERC20Upgradeable public constant USM = IERC20Upgradeable(0x7E05DC0396b4Cfc764B2C9E891dfCD5CE8bF8312); //TODO add as param
+    IERC20Upgradeable public USM;
     IStakingToken public stakingToken;
     IStakingWarmUp public stakingWarmUp;
     IUSMMinter public usmMinter;
@@ -70,9 +70,12 @@ contract Staking is Initializable, OwnableUpgradeable {
     
     uint USMClaimLimit;
 
-    function initialize(address owner_, address _trustedForwarderAddress, uint _USMClaimLimit) external initializer {
+    function initialize(address owner_, address _trustedForwarderAddress, address _USM, uint _USMClaimLimit) external initializer {
         _trustedForwarder = _trustedForwarderAddress;
         USMClaimLimit = _USMClaimLimit;
+
+        USM = IERC20Upgradeable(_USM);
+
         __Ownable_init();
         transferOwnership(owner_); //transfer ownership from proxyAdmin contract to deployer
     }
@@ -132,7 +135,7 @@ contract Staking is Initializable, OwnableUpgradeable {
 
         //withdraw deposited D33d (don't withdraw rewards if any). Rewards should have been withdrawn 
         //in previous step(_claimRewards). Any remaining rewards is still there because of USMRewardLimit
-        amount = stakingToken.balanceForGons(info.deposit);
+        amount = info.deposit;
 
         warmupInfo[_sender] = Claim({
             deposit: 0,
