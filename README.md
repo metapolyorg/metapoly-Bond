@@ -44,10 +44,12 @@ Staking accepts d33d from the user. The user receives USM as staking rewards. St
  User receives vD33D(Voting D33D) after staking the D33D. vD33D is burned when d33d is unstaked.
 | Contracts | Mainnet Address                                                                                                       | Rinkeby Address
 | ----- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Staking    |  |  [0x4a3d9D2099224f9e25e618Bda05e1022b3ea3eb9](https://rinkeby.etherscan.io/address/0x4a3d9D2099224f9e25e618Bda05e1022b3ea3eb9) |
-| Staking Token (fsD33D) |  |  [0xf667464696b5802aa48886db3306b33cf9770b7a](https://rinkeby.etherscan.io/address/0xf667464696b5802aa48886db3306b33cf9770b7a) |
+| Staking         |  |  [0x0374e77439acbA0cddD4D572c88BB3E8f82f230E](https://rinkeby.etherscan.io/address/0x0374e77439acbA0cddD4D572c88BB3E8f82f230E) |
+| Staking Token (sD33D) |  |  [0x66894B130e708A33BC1f68C861208aFf26f4B40b](https://rinkeby.etherscan.io/address/0x66894B130e708A33BC1f68C861208aFf26f4B40b) |
+| Staking  (old)  |  |  [0x4a3d9D2099224f9e25e618Bda05e1022b3ea3eb9](https://rinkeby.etherscan.io/address/0x4a3d9D2099224f9e25e618Bda05e1022b3ea3eb9) |
+| Staking Token (fsD33D) (old) |  |  [0xf667464696b5802aa48886db3306b33cf9770b7a](https://rinkeby.etherscan.io/address/0xf667464696b5802aa48886db3306b33cf9770b7a) |
 | Staking  Warmup  |  |  [0x8f7bab28f8bdc76188dbbf607414e5678a26e840](https://rinkeby.etherscan.io/address/0x8f7bab28f8bdc76188dbbf607414e5678a26e840) |
-| vD33D    |  |   |
+| vD33D    |  |  [0xA6c55a9DC2e45dc9611153FC95568D0158F8B13D](https://rinkeby.etherscan.io/address/0xA6c55a9DC2e45dc9611153FC95568D0158F8B13D) |
 
 ### Protocol
 ### Treasury
