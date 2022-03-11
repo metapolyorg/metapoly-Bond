@@ -11,7 +11,7 @@ module.exports = async () => {
     })
 
     let BondContract = await ethers.getContractFactory("NFTBond", deployer)
-    let bondContract = await upgrades.upgradeProxy("0x35B52706732B3148868A23798012994f52d340D1", BondContract)
+//    let bondContract = await upgrades.upgradeProxy("0x35B52706732B3148868A23798012994f52d340D1", BondContract)
     await bondContract.connect(deployer).setTrustedForwarder(addresses.biconomy.forwarder)
     
     let bondContract = await upgrades.deployProxy(BondContract, [addresses.d33d, addresses.NFT.DECENTRALAND_LAND, addresses.treasury, 
