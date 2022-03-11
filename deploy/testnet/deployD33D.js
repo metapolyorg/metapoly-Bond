@@ -6,7 +6,7 @@ module.exports = async () => {
 
     let D33d = await ethers.getContractFactory("D33DImplementation", deployer)
 
-    let d33d = await upgrades.deployProxy(D33d, ["MetaPoly", "D33D"])
+    let d33d = await upgrades.deployProxy(D33d, ["MetaPoly", "D33D", ethers.utils.parseEther("100000000")])
 
     await d33d.deployed()
   
