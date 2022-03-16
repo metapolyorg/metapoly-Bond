@@ -25,7 +25,8 @@ interface IBondCalculator {
     function valuation( address _LP, uint _amount ) external view returns ( uint );
     function markdown( address _LP ) external view returns ( uint );
 }
-
+/// #invariant {:msg "SCRIBBLE INVARIANT: bondPrice is zero"} bondPrice() != 0;
+/// #invariant {:msg "SCRIBBLE INVARIANT: bondPrice less than minimumPrice"} bondPrice() >= terms.minimumPrice;
 contract BondContract is Initializable {
     using SafeMathUpgradeable for uint;
     using SafeERC20Upgradeable for IERC20Upgradeable;
@@ -166,13 +167,18 @@ contract BondContract is Initializable {
 
         principle.safeTransferFrom(_msgSender(), address(this), _amount);
         ITreasury( treasury ).deposit( _amount, address(principle), profit ); 
+
+
+        if(fee > 0) {
+            D33D.safeTransfer(DAO, fee);
+        }
         
         // total debt is increased
         totalDebt = totalDebt.add( value ); 
                 
         // depositor info is stored
         bondInfo[ _depositer ] = Bond({ 
-            payout: bondInfo[ _depositer ].payout.add( payout ).add(fee),
+            payout: bondInfo[ _depositer ].payout.add( payout ),
             vesting: terms.vestingTerm,
             lastTimestamp: block.timestamp,
             pricePaid: priceInUSD
@@ -191,6 +197,7 @@ contract BondContract is Initializable {
         @param _recipient Address to redeem
         @param _stake Whether to stake/redeem the vested D33D
      */
+     /// #if_succeeds {:msg "Should not claim more than allocated"} $result <= bondInfo[ _recipient ].payout;
     function redeem( address _recipient, bool _stake ) external returns ( uint ) {        
         Bond memory info = bondInfo[ _recipient ];
         uint percentVested = percentVestedFor( _recipient ); // (blocks since last interaction / vesting term remaining)
@@ -206,7 +213,7 @@ contract BondContract is Initializable {
             // store updated deposit info
             bondInfo[ _recipient ] = Bond({
                 payout: info.payout.sub( payout ),
-                vesting: info.vesting - (block.timestamp - info.lastTimestamp),
+                vesting: info.vesting.sub(block.timestamp.sub(info.lastTimestamp)),
                 lastTimestamp: block.timestamp,
                 pricePaid: info.pricePaid
             });
