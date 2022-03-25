@@ -147,30 +147,55 @@ contract Staking is Initializable, OwnableUpgradeable {
         
     }
 
-    function claimRewards() external {
-        _claimRewards(_msgSender());
+    ///@notice Claims D33D and stakes again. Users will receive vD33D
+    function claimAndStakeD33D() external {
+        _claimRewards(_msgSender(), false);
     }
 
-    function _claimRewards(address _sender) internal {
+    ///@notice collects rewards in USM by burning reward d33d
+    function claimRewards() external {
+        _claimRewards(_msgSender(), true);
+    }
+
+    function _claimRewards(address _sender, bool asUSM) internal {
         Claim memory info = warmupInfo[_sender];
         //difference in deposited amount and current sTOKEN amount are the rewards
-        uint _amount = stakingToken.balanceForGons( info.gons );
+        uint _amount = stakingToken.balanceForGons( info.gons ); //check before changing this var. Used below again
         uint rewards = _amount - info.deposit;
 
         if(rewards > 0) {
-            uint diff;
-            uint maxD33d = USMClaimLimit * 1e18 / usmMinter.getUsmAmountOut(address(D33D), 1e18);
 
-            if(rewards > maxD33d) {
-                diff = rewards - maxD33d;
-                // rewards = rewards - diff;
-                rewards = maxD33d;
+            if(asUSM) {
+                uint diff;
+                uint maxD33d = USMClaimLimit * 1e18 / usmMinter.getUsmAmountOut(address(D33D), 1e18);
+
+                if(rewards > maxD33d) {
+                    diff = rewards - maxD33d;
+                    // rewards = rewards - diff;
+                    rewards = maxD33d;
+                }
+
+                stakingWarmUp.retrieve(address(this), rewards);
+                warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
+
+                usmMinter.mintWithD33d(rewards, _sender);
+            } else {
+                //AutoCompound
+                /**
+                    1. retrieve reward amount of sD33D
+                    2. update warmupInfo.gons to gonsForBalance(info.deposit) -> To collect the rewards
+                    3. update warmupInfo.deposit to info.deposit + gonsForBalance(rewards)
+                    4. transfer same amount of retrieved sD33D in step 1 back to staking warmup
+
+                    we ignore step1 and step4 to save gas
+                */
+
+                warmupInfo[_sender].gons = stakingToken.gonsForBalance(info.deposit); //collects rewards
+                warmupInfo[_sender].deposit = _amount;
+                vD33D.mint(_sender, rewards);
+
             }
 
-            stakingWarmUp.retrieve(address(this), rewards);
-            warmupInfo[_sender].gons = stakingToken.gonsForBalance( info.deposit + diff );
-
-            usmMinter.mintWithD33d(rewards, _sender);
         }
     }
 
@@ -182,7 +207,7 @@ contract Staking is Initializable, OwnableUpgradeable {
             rebase();
         }
 
-        _claimRewards(_sender); // user receives USM rewards
+        _claimRewards(_sender, true); // user receives USM rewards
 
         _d33dAmt = claim(_sender);
         if(_d33dAmt > 0) {
