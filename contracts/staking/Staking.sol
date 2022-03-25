@@ -123,7 +123,7 @@ contract Staking is Initializable, OwnableUpgradeable {
         });
 
         stakingToken.transfer(address(stakingWarmUp), _amount);
-        vD33D.mint(_sender, _amount);
+        vD33D.mint(_receiver, _amount);
         return true;
 
     }
