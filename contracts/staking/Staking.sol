@@ -183,14 +183,14 @@ contract Staking is Initializable, OwnableUpgradeable {
                 //AutoCompound
                 /**
                     1. retrieve reward amount of sD33D
-                    2. update warmupInfo.gons to gonsForBalance(info.deposit) -> To collect the rewards
-                    3. update warmupInfo.deposit to info.deposit + gonsForBalance(rewards)
+                    2. update warmupInfo.gons as gonsForBalance(info.deposit + rewards)
+                    3. update warmupInfo.deposit as info.deposit + gonsForBalance(rewards)
                     4. transfer same amount of retrieved sD33D in step 1 back to staking warmup
 
                     we ignore step1 and step4 to save gas
                 */
-
-                warmupInfo[_sender].gons = stakingToken.gonsForBalance(info.deposit); //collects rewards
+                // gonsForBalance(info.deposit + rewards) == balanceForGons(info.gons) but info.gons != gonsForBalance(info.deposit + rewards)
+                warmupInfo[_sender].gons = stakingToken.gonsForBalance(info.deposit + rewards); 
                 warmupInfo[_sender].deposit = _amount;
                 vD33D.mint(_sender, rewards);
 
